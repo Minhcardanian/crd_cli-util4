@@ -1,7 +1,17 @@
-
 #!/bin/bash
-source "$(dirname "$0")/config.sh"
-source "$(dirname "$0")/lib.sh"
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
+
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+source "$LIB_FILE"
 
 # Paths to important files
 STAKE_VKEY="stake.vkey"
@@ -137,16 +147,13 @@ submit_transaction() {
   fi
 
   echo "Signing transaction..."
-  $CARDANO_CLI conway transaction sign \
-    --tx-body-file $TX_RAW \
-    --signing-key-file $PAYMENT_SKEY \
-    --signing-key-file $STAKE_SKEY \
-    --out-file $TX_SIGNED
+  sign_tx --tx-body-file "$TX_RAW" \
+          --signing-key-file "$PAYMENT_SKEY" \
+          --signing-key-file "$STAKE_SKEY" \
+          --out-file "$TX_SIGNED"
 
   echo "Submitting transaction..."
-  $CARDANO_CLI conway transaction submit \
-    --tx-file $TX_SIGNED \
-    $NETWORK
+  submit_tx --tx-file "$TX_SIGNED"
 }
 
 # Function to submit transaction for undelegation
@@ -178,16 +185,13 @@ submit_undelegation_transaction() {
   fi
 
   echo "Signing transaction..."
-  $CARDANO_CLI conway transaction sign \
-    --tx-body-file "$TX_RAW" \
-    --signing-key-file "$PAYMENT_SKEY" \
-    --signing-key-file "$STAKE_SKEY" \
-    --out-file "$TX_SIGNED"
+  sign_tx --tx-body-file "$TX_RAW" \
+          --signing-key-file "$PAYMENT_SKEY" \
+          --signing-key-file "$STAKE_SKEY" \
+          --out-file "$TX_SIGNED"
 
   echo "Submitting transaction..."
-  $CARDANO_CLI conway transaction submit \
-    --tx-file "$TX_SIGNED" \
-    $NETWORK
+  submit_tx --tx-file "$TX_SIGNED"
 }
 
 # Function to check if the user is already delegated
@@ -203,22 +207,17 @@ is_delegated() {
 # Function to withdraw rewards
 withdraw_rewards() {
   echo "Withdrawing rewards..."
-  $CARDANO_CLI conway transaction build \
-    --tx-in "$SELECTED_UTXO" \
-    --change-address "$PAYMENT_ADDR" \
-    --withdrawal "$STAKE_ADDR" \
-    --witness-override 2 \
-    --out-file "withdrawal.raw" \
-    $NETWORK
+  build_tx --tx-in "$SELECTED_UTXO" \
+           --change-address "$PAYMENT_ADDR" \
+           --withdrawal "${STAKE_ADDR}+${REWARDS}" \
+           --witness-override 2 \
+           --out-file "withdrawal.raw"
 
-  $CARDANO_CLI conway transaction sign \
-    --tx-body-file "withdrawal.raw" \
-    --signing-key-file $PAYMENT_SKEY \
-    --out-file "withdrawal.signed"
+  sign_tx --tx-body-file "withdrawal.raw" \
+          --signing-key-file "$PAYMENT_SKEY" \
+          --out-file "withdrawal.signed"
 
-  $CARDANO_CLI conway transaction submit \
-    --tx-file "withdrawal.signed" \
-    $NETWORK
+  submit_tx --tx-file "withdrawal.signed"
 
   echo "Successfully withdrew rewards."
 }

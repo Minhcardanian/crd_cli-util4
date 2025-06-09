@@ -1,6 +1,17 @@
 #!/bin/bash
-source "$(dirname "$0")/config.sh"
-source "$(dirname "$0")/lib.sh"
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
+
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+source "$LIB_FILE"
 
 FILE_UTILS="./file_utils.sh"
 
@@ -60,7 +71,7 @@ unlock_asset() {
                 --tx-in-script-file "$script_plutus" \
                 --tx-in-inline-datum-present \
                 --tx-in-redeemer-file "$redeemer_file" \
-                --change-address $(< payment.addr) \
+                --change-address "$(< payment.addr)" \
                 --out-file unlock.tx; then
         echo "Transaction built successfully."
     else

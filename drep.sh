@@ -1,6 +1,17 @@
 #!/bin/bash
-source "$(dirname "$0")/config.sh"
-source "$(dirname "$0")/lib.sh"
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
+
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+source "$LIB_FILE"
 
 SELECT_UTXO="./select-utxo.sh"
 
@@ -50,7 +61,7 @@ build_drep_tx() {
   
   $CARDANO_CLI conway transaction build \
     --tx-in "$tx_in" \
-    --change-address $(< payment.addr) \
+    --change-address "$(< payment.addr)" \
     --certificate-file drep-reg.cert  \
     $NETWORK \
     --witness-override 2 \
@@ -59,15 +70,12 @@ build_drep_tx() {
 
 # Function to sign and submit dRep registration transaction
 sign_and_submit_drep_tx() {
-  $CARDANO_CLI conway transaction sign \
-    --tx-body-file tx.raw \
-    --signing-key-file payment.skey \
-    --signing-key-file drep.skey \
-    --out-file tx.signed
+  sign_tx --tx-body-file tx.raw \
+          --signing-key-file payment.skey \
+          --signing-key-file drep.skey \
+          --out-file tx.signed
   echo "txhash :"
-  $CARDANO_CLI conway transaction submit \
-    --tx-file tx.signed \
-    $NETWORK
+  submit_tx --tx-file tx.signed
 }
 
 export_drepid (){
@@ -120,20 +128,19 @@ build_and_submit_vote_tx() {
   fi
 
   $CARDANO_CLI conway transaction build \
-    --tx-in "$($CARDANO_CLI query utxo --address $(< payment.addr) $NETWORK --output-json | jq -r 'keys[0]')" \
-    --change-address $(< payment.addr) \
+    --tx-in "$($CARDANO_CLI query utxo --address "$(< payment.addr)" $NETWORK --output-json | jq -r 'keys[0]')" \
+    --change-address "$(< payment.addr)" \
     --vote-file "$vote_file" \
     --witness-override 2 \
     --out-file vote-tx.raw \
     $NETWORK
 
-  $CARDANO_CLI conway transaction sign --tx-body-file vote-tx.raw \
-    --signing-key-file drep.skey \
-    --signing-key-file payment.skey \
-    --out-file vote-tx.signed \
-    $NETWORK
+  sign_tx --tx-body-file vote-tx.raw \
+          --signing-key-file drep.skey \
+          --signing-key-file payment.skey \
+          --out-file vote-tx.signed
 
-  $CARDANO_CLI conway transaction submit --tx-file vote-tx.signed $NETWORK
+  submit_tx --tx-file vote-tx.signed
 }
 
 
