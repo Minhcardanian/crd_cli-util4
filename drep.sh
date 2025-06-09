@@ -59,13 +59,11 @@ build_drep_tx() {
 
 
   
-  $CARDANO_CLI conway transaction build \
-    --tx-in "$tx_in" \
-    --change-address "$(< payment.addr)" \
-    --certificate-file drep-reg.cert  \
-    $NETWORK \
-    --witness-override 2 \
-    --out-file tx.raw
+  build_tx --tx-in "$tx_in" \
+           --change-address "$(< payment.addr)" \
+           --certificate-file drep-reg.cert \
+           --witness-override 2 \
+           --out-file tx.raw
 }
 
 # Function to sign and submit dRep registration transaction
@@ -127,13 +125,11 @@ build_and_submit_vote_tx() {
     return 1
   fi
 
-  $CARDANO_CLI conway transaction build \
-    --tx-in "$($CARDANO_CLI query utxo --address "$(< payment.addr)" $NETWORK --output-json | jq -r 'keys[0]')" \
-    --change-address "$(< payment.addr)" \
-    --vote-file "$vote_file" \
-    --witness-override 2 \
-    --out-file vote-tx.raw \
-    $NETWORK
+  build_tx --tx-in "$($CARDANO_CLI query utxo --address "$(< payment.addr)" $NETWORK --output-json | jq -r 'keys[0]')" \
+           --change-address "$(< payment.addr)" \
+           --vote-file "$vote_file" \
+           --witness-override 2 \
+           --out-file vote-tx.raw
 
   sign_tx --tx-body-file vote-tx.raw \
           --signing-key-file drep.skey \

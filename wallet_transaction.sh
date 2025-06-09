@@ -29,18 +29,18 @@ check_and_generate_wallet() {
 # Function to perform the transaction
 perform_transaction() {
     select_utxo "payment" || return 1
-    if [[ -z "$SELECTED_UTXO" ]]; then
+    if [[ -z "${SELECTED_UTXO:-}" ]]; then
         echo "No UTXO selected. Exiting." >&2
         return 1
     fi
     echo "Using UTXO: $SELECTED_UTXO for the transaction."
     local tx_in="$SELECTED_UTXO"
 
-    read -p "Enter the amount (tx-mount): " tx_mount
+    read -p "Enter the amount (tx-amount): " tx_amount
     read -p "Enter the recipient address (tx-out): " tx_out
 
     build_tx --tx-in "$tx_in" \
-             --tx-out "$tx_out+$tx_mount" \
+             --tx-out "$tx_out+$tx_amount" \
              --change-address "$(cat payment.addr)" \
              --out-file simple-tx.raw || return 1
 

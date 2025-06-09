@@ -24,14 +24,19 @@ STAKE_ADDR=$(<stake.addr)
 DEGREG_CERT="dereg.cert"
 
 # External scripts
-SELECT_UTXO="./select-utxo.sh"
-FILE_UTILS="./file_utils.sh"
+SELECT_UTXO="$SCRIPT_DIR/select-utxo.sh"
+FILE_UTILS="$SCRIPT_DIR/file_utils.sh"
 
 STAKE_KEY_REGISTERED=$($CARDANO_CLI query stake-address-info --address "$(cat $STAKE_ADDR_FILE)" $NETWORK | jq -r '.[0].stakeDelegation')
 
 # Check if required external files exist
-if [[ ! -f $SELECT_UTXO || ! -f $FILE_UTILS ]]; then
-  echo "Required utility scripts not found: $SELECT_UTXO or $FILE_UTILS."
+if [[ ! -f "$SELECT_UTXO" ]]; then
+  echo "select-utxo.sh not found in $SCRIPT_DIR" >&2
+  exit 1
+fi
+
+if [[ ! -f "$FILE_UTILS" ]]; then
+  echo "file_utils.sh not found in $SCRIPT_DIR" >&2
   exit 1
 fi
 

@@ -13,9 +13,14 @@ fi
 source "$CONFIG_FILE"
 source "$LIB_FILE"
 
-FILE_UTILS="./file_utils.sh"
+FILE_UTILS="$SCRIPT_DIR/file_utils.sh"
 
-# Import modules
+# Import modules with existence check
+if [[ ! -f "$FILE_UTILS" ]]; then
+  echo "file_utils.sh not found in $SCRIPT_DIR" >&2
+  exit 1
+fi
+
 source "$FILE_UTILS"
 
 # Function to unlock asset
