@@ -77,7 +77,7 @@ sign_and_submit_drep_tx() {
 }
 
 export_drepid (){
-   $CARDANO_CLI conway governance drep id \
+   $CARDANO_CLI conway governance drep id $NETWORK \
   --drep-verification-key-file drep.vkey \
   --output-format hex > drep.id
 }

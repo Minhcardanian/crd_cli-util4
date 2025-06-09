@@ -14,7 +14,11 @@ source "$CONFIG_FILE"
 source "$LIB_FILE"
 
 # Path to wallet generation module
-WALLET_GENERATE="./wallet-generate.sh"
+WALLET_GENERATE="$SCRIPT_DIR/wallet-generate.sh"
+if [[ ! -f "$WALLET_GENERATE" ]]; then
+    echo "wallet-generate.sh not found in $SCRIPT_DIR" >&2
+    exit 1
+fi
 
 # Check if the wallet exists
 check_and_generate_wallet() {
