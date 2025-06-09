@@ -1,13 +1,17 @@
-
 #!/bin/bash
 source "$(dirname "$0")/config.sh"
+set -euo pipefail
 
-UTXO_FILE="utxo.json"
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
 
-# Function to select UTXO
-select_utxo() {
-    local input_type="$1"  # Input parameter: "payment" or "script"
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
 
+<<<<<<< HEAD
     if [[ "$input_type" == "payment" ]]; then
         # Query UTXO from the payment address
         $CARDANO_CLI conway query utxo \
@@ -53,3 +57,9 @@ select_utxo() {
 
 # To select a script UTXO:
 # select_utxo "script"
+=======
+source "$CONFIG_FILE"
+source "$LIB_FILE"
+
+select_utxo "$@"
+>>>>>>> feature/config-centralization

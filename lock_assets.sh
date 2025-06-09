@@ -1,13 +1,26 @@
-
 #!/bin/bash
+<<<<<<< HEAD
 source "$(dirname "$0")/config.sh"
+=======
+set -euo pipefail
 
-SELECT_UTXO="./select-utxo.sh"
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
+
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+source "$LIB_FILE"
+>>>>>>> feature/config-centralization
+
 FILE_UTILS="./file_utils.sh"
 
 # Import modules
 source "$FILE_UTILS"
-source "$SELECT_UTXO"
 
 PAYMENT_ADDR_FILE="payment.addr"
 SIGNING_KEY_FILE="payment.skey"
@@ -48,6 +61,7 @@ lock_asset() {
     datum_file="$selected_file"
 
     echo ">> Building smart contract address..."
+<<<<<<< HEAD
     $CARDANO_CLI address build \
         --payment-script-file "$script_plutus" \
         --out-file script.addr \
@@ -75,6 +89,27 @@ lock_asset() {
     $CARDANO_CLI conway transaction submit \
         $NETWORK \
         --tx-file lock.tx.signed
+=======
+    run_plutus_script "$script_plutus" script.addr
+    check_command $? "Failed to build smart contract address."
+
+    echo ">> Building transaction..."
+    build_tx --tx-in "$tx_in" \
+             --tx-out "$(cat script.addr)+$tx_amount" \
+             --tx-out-inline-datum-file "$datum_file" \
+             --change-address "$(cat "$PAYMENT_ADDR_FILE")" \
+             --out-file lock.tx
+    check_command $? "Failed to build transaction."
+
+    echo ">> Signing transaction..."
+    sign_tx --tx-body-file lock.tx \
+            --signing-key-file "$SIGNING_KEY_FILE" \
+            --out-file lock.tx.signed
+    check_command $? "Failed to sign transaction."
+
+    echo ">> Submitting transaction..."
+    submit_tx --tx-file lock.tx.signed
+>>>>>>> feature/config-centralization
     check_command $? "Failed to submit transaction."
 
     txid=$($CARDANO_CLI conway transaction txid --tx-file lock.tx.signed)

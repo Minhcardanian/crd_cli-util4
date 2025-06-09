@@ -1,4 +1,5 @@
 source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 select_poolid() {
     # Fetch the list of pool IDs from the $CARDANO_CLI command
     pools=$($CARDANO_CLI query stake-pools $NETWORK 2>/dev/null)

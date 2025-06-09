@@ -1,12 +1,25 @@
 #!/bin/bash
 source "$(dirname "$0")/config.sh"
+set -euo pipefail
 
-# Path to wallet generation and UTXO selection modules
-WALLET_GENERATE="./wallet-generate.sh"
-SELECT_UTXO="./select-utxo.sh"
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
 
-# Source the UTXO selection script
-source "$SELECT_UTXO"
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+source "$LIB_FILE"
+
+# Path to wallet generation module
+WALLET_GENERATE="$SCRIPT_DIR/wallet-generate.sh"
+if [[ ! -f "$WALLET_GENERATE" ]]; then
+    echo "wallet-generate.sh not found in $SCRIPT_DIR" >&2
+    exit 1
+fi
 
 # Check if the wallet exists
 check_and_generate_wallet() {
@@ -20,20 +33,18 @@ check_and_generate_wallet() {
 
 # Function to perform the transaction
 perform_transaction() {
-    # Source the UTXO selection module
-    select_utxo "payment"
-
-    # Use the selected UTXO
-    if [[ -z "$SELECTED_UTXO" ]]; then
-        echo "No UTXO selected. Exiting."
-        return
+    select_utxo "payment" || return 1
+    if [[ -z "${SELECTED_UTXO:-}" ]]; then
+        echo "No UTXO selected. Exiting." >&2
+        return 1
     fi
     echo "Using UTXO: $SELECTED_UTXO for the transaction."
-    tx_in="$SELECTED_UTXO"
+    local tx_in="$SELECTED_UTXO"
 
-    read -p "Enter the amount (tx-mount): " tx_mount
+    read -p "Enter the amount (tx-amount): " tx_amount
     read -p "Enter the recipient address (tx-out): " tx_out
 
+<<<<<<< HEAD
     # Build the transaction
     echo "Building the transaction..."
     if $CARDANO_CLI conway transaction build \
@@ -71,15 +82,31 @@ perform_transaction() {
         echo "Error submitting the transaction."
         exit 1
     fi
+=======
+    build_tx --tx-in "$tx_in" \
+             --tx-out "$tx_out+$tx_amount" \
+             --change-address "$(cat payment.addr)" \
+             --out-file simple-tx.raw || return 1
 
-    # Retrieve txid
+    sign_tx --signing-key-file payment.skey \
+            --tx-body-file simple-tx.raw \
+            --out-file simple-tx.signed || return 1
+
+    submit_tx --tx-file simple-tx.signed >/dev/null 2>&1 || return 1
+>>>>>>> feature/config-centralization
+
     echo "Retrieving transaction ID..."
+<<<<<<< HEAD
     if txid=$($CARDANO_CLI conway transaction txid --tx-file simple-tx.signed); then
         echo "Transaction ID (txid): $txid"
     else
         echo "Error retrieving transaction ID."
         exit 1
     fi
+=======
+    txid=$($CARDANO_CLI conway transaction txid --tx-file simple-tx.signed)
+    [[ -n "$txid" ]] && echo "Transaction ID (txid): $txid"
+>>>>>>> feature/config-centralization
 }
 
 # Main function

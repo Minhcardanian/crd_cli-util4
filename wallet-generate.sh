@@ -1,8 +1,27 @@
-
 #!/bin/bash
 source "$(dirname "$0")/config.sh"
 
 # Check required tools before running
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
+
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+source "$LIB_FILE"
+
+# Check required tools before running
+if [[ -z "${CARDANO_ADDRESS:-}" || -z "${CARDANO_CLI:-}" ]]; then
+  echo "CARDANO_ADDRESS or CARDANO_CLI not set" >&2
+  exit 1
+fi
+
 command -v "$CARDANO_ADDRESS" > /dev/null || { echo "Error: '$CARDANO_ADDRESS' is not installed."; exit 1; }
 command -v "$CARDANO_CLI" > /dev/null || { echo "Error: '$CARDANO_CLI' is not installed."; exit 1; }
 

@@ -1,5 +1,18 @@
 #!/bin/bash
 source "$(dirname "$0")/config.sh"
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
+
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+source "$LIB_FILE"
 
 # Ask for user input to select an option
 clear
@@ -53,14 +66,20 @@ esac
 # Perform the transaction
 echo "Building transaction..."
 $CARDANO_CLI conway transaction build \
+<<<<<<< HEAD
   --tx-in $($CARDANO_CLI query utxo --address $(< payment.addr) $NETWORK --out-file /dev/stdout | jq -r 'keys[0]') \
   --change-address $(< payment.addr) \
+=======
+  --tx-in "$($CARDANO_CLI query utxo --address "$(< payment.addr)" $NETWORK --out-file /dev/stdout | jq -r 'keys[0]')" \
+  --change-address "$(< payment.addr)" \
+>>>>>>> feature/config-centralization
   --certificate-file vote-deleg.cert \
   --witness-override 2 \
   --out-file tx.raw \
   $NETWORK
 
 echo "Signing transaction..."
+<<<<<<< HEAD
 $CARDANO_CLI conway transaction sign \
   --tx-body-file tx.raw \
   --signing-key-file payment.skey \
@@ -71,5 +90,14 @@ echo "Submitting transaction..."
 $CARDANO_CLI conway transaction submit \
   --tx-file tx.signed \
   $NETWORK
+=======
+sign_tx --tx-body-file tx.raw \
+        --signing-key-file payment.skey \
+        --signing-key-file stake.skey \
+        --out-file tx.signed
+
+echo "Submitting transaction..."
+submit_tx --tx-file tx.signed
+>>>>>>> feature/config-centralization
 
 echo "Vote delegation transaction completed."

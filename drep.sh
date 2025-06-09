@@ -1,5 +1,18 @@
 #!/bin/bash
 source "$(dirname "$0")/config.sh"
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
+
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+source "$LIB_FILE"
 
 SELECT_UTXO="./select-utxo.sh"
 
@@ -47,6 +60,7 @@ build_drep_tx() {
 
 
   
+<<<<<<< HEAD
   $CARDANO_CLI conway transaction build \
     --tx-in "$tx_in" \
     --change-address $(< payment.addr) \
@@ -54,10 +68,18 @@ build_drep_tx() {
     $NETWORK \
     --witness-override 2 \
     --out-file tx.raw
+=======
+  build_tx --tx-in "$tx_in" \
+           --change-address "$(< payment.addr)" \
+           --certificate-file drep-reg.cert \
+           --witness-override 2 \
+           --out-file tx.raw
+>>>>>>> feature/config-centralization
 }
 
 # Function to sign and submit dRep registration transaction
 sign_and_submit_drep_tx() {
+<<<<<<< HEAD
   $CARDANO_CLI conway transaction sign \
     --tx-body-file tx.raw \
     --signing-key-file payment.skey \
@@ -71,6 +93,18 @@ sign_and_submit_drep_tx() {
 
 export_drepid (){
    $CARDANO_CLI conway governance drep id \
+=======
+  sign_tx --tx-body-file tx.raw \
+          --signing-key-file payment.skey \
+          --signing-key-file drep.skey \
+          --out-file tx.signed
+  echo "txhash :"
+  submit_tx --tx-file tx.signed
+}
+
+export_drepid (){
+   $CARDANO_CLI conway governance drep id $NETWORK \
+>>>>>>> feature/config-centralization
   --drep-verification-key-file drep.vkey \
   --output-format hex > drep.id
 }
@@ -118,6 +152,7 @@ build_and_submit_vote_tx() {
     return 1
   fi
 
+<<<<<<< HEAD
   $CARDANO_CLI conway transaction build \
     --tx-in "$($CARDANO_CLI query utxo --address $(< payment.addr) $NETWORK --output-json | jq -r 'keys[0]')" \
     --change-address $(< payment.addr) \
@@ -133,6 +168,20 @@ build_and_submit_vote_tx() {
     $NETWORK
 
   $CARDANO_CLI conway transaction submit --tx-file vote-tx.signed $NETWORK
+=======
+  build_tx --tx-in "$($CARDANO_CLI query utxo --address "$(< payment.addr)" $NETWORK --output-json | jq -r 'keys[0]')" \
+           --change-address "$(< payment.addr)" \
+           --vote-file "$vote_file" \
+           --witness-override 2 \
+           --out-file vote-tx.raw
+
+  sign_tx --tx-body-file vote-tx.raw \
+          --signing-key-file drep.skey \
+          --signing-key-file payment.skey \
+          --out-file vote-tx.signed
+
+  submit_tx --tx-file vote-tx.signed
+>>>>>>> feature/config-centralization
 }
 
 

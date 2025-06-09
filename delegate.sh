@@ -1,6 +1,18 @@
-
 #!/bin/bash
 source "$(dirname "$0")/config.sh"
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
+
+if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
+  echo "Required config.sh or lib.sh not found" >&2
+  exit 1
+fi
+
+source "$CONFIG_FILE"
+source "$LIB_FILE"
 
 # Paths to important files
 STAKE_VKEY="stake.vkey"
@@ -13,14 +25,19 @@ STAKE_ADDR=$(<stake.addr)
 DEGREG_CERT="dereg.cert"
 
 # External scripts
-SELECT_UTXO="./select-utxo.sh"
-FILE_UTILS="./file_utils.sh"
+SELECT_UTXO="$SCRIPT_DIR/select-utxo.sh"
+FILE_UTILS="$SCRIPT_DIR/file_utils.sh"
 
 STAKE_KEY_REGISTERED=$($CARDANO_CLI query stake-address-info --address "$(cat $STAKE_ADDR_FILE)" $NETWORK | jq -r '.[0].stakeDelegation')
 
 # Check if required external files exist
-if [[ ! -f $SELECT_UTXO || ! -f $FILE_UTILS ]]; then
-  echo "Required utility scripts not found: $SELECT_UTXO or $FILE_UTILS."
+if [[ ! -f "$SELECT_UTXO" ]]; then
+  echo "select-utxo.sh not found in $SCRIPT_DIR" >&2
+  exit 1
+fi
+
+if [[ ! -f "$FILE_UTILS" ]]; then
+  echo "file_utils.sh not found in $SCRIPT_DIR" >&2
   exit 1
 fi
 
@@ -136,6 +153,7 @@ submit_transaction() {
   fi
 
   echo "Signing transaction..."
+<<<<<<< HEAD
   $CARDANO_CLI conway transaction sign \
     --tx-body-file $TX_RAW \
     --signing-key-file $PAYMENT_SKEY \
@@ -146,6 +164,15 @@ submit_transaction() {
   $CARDANO_CLI conway transaction submit \
     --tx-file $TX_SIGNED \
     $NETWORK
+=======
+  sign_tx --tx-body-file "$TX_RAW" \
+          --signing-key-file "$PAYMENT_SKEY" \
+          --signing-key-file "$STAKE_SKEY" \
+          --out-file "$TX_SIGNED"
+
+  echo "Submitting transaction..."
+  submit_tx --tx-file "$TX_SIGNED"
+>>>>>>> feature/config-centralization
 }
 
 # Function to submit transaction for undelegation
@@ -177,6 +204,7 @@ submit_undelegation_transaction() {
   fi
 
   echo "Signing transaction..."
+<<<<<<< HEAD
   $CARDANO_CLI conway transaction sign \
     --tx-body-file "$TX_RAW" \
     --signing-key-file "$PAYMENT_SKEY" \
@@ -187,6 +215,15 @@ submit_undelegation_transaction() {
   $CARDANO_CLI conway transaction submit \
     --tx-file "$TX_SIGNED" \
     $NETWORK
+=======
+  sign_tx --tx-body-file "$TX_RAW" \
+          --signing-key-file "$PAYMENT_SKEY" \
+          --signing-key-file "$STAKE_SKEY" \
+          --out-file "$TX_SIGNED"
+
+  echo "Submitting transaction..."
+  submit_tx --tx-file "$TX_SIGNED"
+>>>>>>> feature/config-centralization
 }
 
 # Function to check if the user is already delegated
@@ -202,6 +239,7 @@ is_delegated() {
 # Function to withdraw rewards
 withdraw_rewards() {
   echo "Withdrawing rewards..."
+<<<<<<< HEAD
   $CARDANO_CLI conway transaction build \
     --tx-in "$SELECTED_UTXO" \
     --change-address "$PAYMENT_ADDR" \
@@ -218,6 +256,19 @@ withdraw_rewards() {
   $CARDANO_CLI conway transaction submit \
     --tx-file "withdrawal.signed" \
     $NETWORK
+=======
+  build_tx --tx-in "$SELECTED_UTXO" \
+           --change-address "$PAYMENT_ADDR" \
+           --withdrawal "${STAKE_ADDR}+${REWARDS}" \
+           --witness-override 2 \
+           --out-file "withdrawal.raw"
+
+  sign_tx --tx-body-file "withdrawal.raw" \
+          --signing-key-file "$PAYMENT_SKEY" \
+          --out-file "withdrawal.signed"
+
+  submit_tx --tx-file "withdrawal.signed"
+>>>>>>> feature/config-centralization
 
   echo "Successfully withdrew rewards."
 }

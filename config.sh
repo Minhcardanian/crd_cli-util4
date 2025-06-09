@@ -19,7 +19,11 @@ NETWORK=${NETWORK:---testnet-magic 2}
 PROTOCOL_PARAMS=${PROTOCOL_PARAMS:-"protocol.json"}
 
 # cardano-node settings (used by run-node.sh)
+<<<<<<< HEAD
 CARDANO_NODE_PATH=${CARDANO_NODE_PATH:-"/home/tuvu2/cardano-node"}
+=======
+CARDANO_NODE_PATH=${CARDANO_NODE_PATH:-"$SCRIPT_DIR/cardano-node"}
+>>>>>>> feature/config-centralization
 TOPOLOGY=${TOPOLOGY:-"$CARDANO_NODE_PATH/share/preview/topology.json"}
 DB_PATH=${DB_PATH:-"$CARDANO_NODE_PATH/db"}
 SOCKET_PATH=${SOCKET_PATH:-"$CARDANO_NODE_PATH/db/node.socket"}
