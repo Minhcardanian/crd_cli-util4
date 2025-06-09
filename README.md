@@ -4,7 +4,7 @@
 
 ## Overview
 
-This repository provides lightweight shell scripts to simplify common `cardano-cli` workflows: key generation, address creation, UTXO querying, transaction building/signing, and basic Plutus script handling. These scripts serve as learning templates—validate each command against the latest Cardano CLI version before using on mainnet.
+Lightweight shell scripts to simplify common `cardano-cli` workflows: key generation, address creation, UTxO querying, transaction building/signing, and basic Plutus script handling. Validate every command against the latest CLI before mainnet use.
 
 ## Table of Contents
 
@@ -12,284 +12,164 @@ This repository provides lightweight shell scripts to simplify common `cardano-c
 * [Prerequisites](#prerequisites)
 * [Installation](#installation)
 * [Scripts & Usage](#scripts--usage)
-
-  * [Keypair & Address Utilities](#keypair--address-utilities)
-  * [UTxO & Chain Queries](#utxo--chain-queries)
-  * [Transaction Workflows](#transaction-workflows)
-  * [Basic Plutus Helpers](#basic-plutus-helpers)
+* [Terminal UI Implementation](#terminal-ui-implementation)
 * [Design Philosophy](#design-philosophy)
+* [Tasks to Complete for Production](#tasks-to-complete-for-production)
 * [Contributing](#contributing)
 * [License](#license)
 
 ## Features
 
-* **Modular Shell Scripts**: Each script focuses on a single task (e.g., generate keypair, build transaction).
-* **Minimal Dependencies**: Only `cardano-cli`, optional `jq`, and standard POSIX tools.
-* **Network Configuration**: Configurable `NETWORK` and `PROTOCOL_FILE` variables at the top of each script for testnet or mainnet.
-* **Sanity Checks**: Scripts verify required files/directories exist and prompt if something is missing.
-* **Extensible Templates**: Configuration blocks isolate CLI version variables so you can update flags as Cardano evolves (e.g., reference inputs, inline datums).
+* **Modular Shell Scripts:** Single-purpose scripts (generate keys, build TX, sign TX, etc.) under `scripts/`.
+* **Minimal Dependencies:** Only `cardano-cli`, optional `jq`, POSIX tools, and (for UI) `whiptail`.
+* **Configurable Network:** Change `NETWORK` and `PROTOCOL_FILE` in one place.
+* **Sanity Checks:** Verify required files/directories; prompt on missing inputs.
+* **Extensible Templates:** Easily update flags for new era features (inline datums, reference inputs).
 
 ## Prerequisites
 
-1. **Cardano Node & CLI**: Install a recent release of [cardano-node](https://github.com/input-output-hk/cardano-node) and ensure `cardano-cli` is in your `PATH`. Verify with:
+1. **Cardano Node & CLI:** Install [cardano-node](https://github.com/input-output-hk/cardano-node) and ensure `cardano-cli --version` works.
+2. **Directory Layout (Recommended):**
 
-   ```bash
-   cardano-cli --version
-   ```
-2. **Repository Structure (Recommended)**:
-
-   ```
+   ```text
    crd_cli-util4/
-   ├─ keys/            # (Optional) store generated keys
-   ├─ scripts/         # All utility scripts
-   │   ├─ generate_keys.sh
-   │   ├─ query_utxo.sh
-   │   ├─ build_tx.sh
-   │   ├─ sign_tx.sh
-   │   ├─ submit_tx.sh
-   │   ├─ create_plutus_script_address.sh
-   │   └─ spend_from_script.sh
-   ├─ protocol.json    # Protocol parameters JSON
-   └─ README.md
+   ├─ config.sh             # network and path settings
+   ├─ lib.sh                # core functions extracted from scripts
+   ├─ menu.sh               # interactive UI wrapper
+   ├─ scripts/              # original CLI scripts
+   ├─ examples/             # demo flows, including UI examples
+   ├─ protocol.json         # protocol parameters
+   └─ keys/                 # generated keys and addresses
    ```
-3. **Unix Tools**: `jq` (recommended for JSON parsing) and standard POSIX commands (`grep`, `awk`, `sed`, `mkdir`, etc.).
+3. **Unix Tools:** `jq` for JSON parsing; `whiptail` (normally preinstalled on Debian/Ubuntu) for the UI.
 
 ## Installation
 
-1. **Clone & Enter**
+```bash
+git clone https://github.com/Minhcardanian/crd_cli-util4.git
+cd crd_cli-util4
+chmod +x scripts/*.sh lib.sh menu.sh
+cardano-cli query protocol-parameters --testnet-magic 1097911063 --out-file protocol.json
+```
 
-   ```bash
-   git clone https://github.com/Minhcardanian/crd_cli-util4.git
-   cd crd_cli-util4
-   ```
-2. **Make Scripts Executable**
+Edit `config.sh` as needed:
 
-   ```bash
-   chmod +x scripts/*.sh
-   ```
-3. **Get Protocol Parameters**
-
-   ```bash
-   cardano-cli query protocol-parameters \
-     --testnet-magic 1097911063 \
-     --out-file protocol.json
-   ```
-
-   Save `protocol.json` at the repo root or adjust `PROTOCOL_FILE` in each script.
-4. **Configure Variables**
-   At the top of each script, edit:
-
-   ```bash
-   NETWORK="--testnet-magic 1097911063"
-   PROTOCOL_FILE="protocol.json"
-   SCRIPTS_DIR="\$(dirname "\$0")"
-   KEYS_DIR="../keys"
-   ```
+```bash
+NETWORK="--testnet-magic 1097911063"
+PROTOCOL_FILE="protocol.json"
+KEYS_DIR="./keys"
+```
 
 ## Scripts & Usage
 
-### Keypair & Address Utilities
+| Script                                    | Description                                                                                                                                                                        |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/generate_keys.sh <wallet-name>`  | Generate payment keypair and address.                                                                                                                                              |
+| `scripts/query_utxo.sh <.addr> [--json]`  | List UTxOs for an address (JSON output optional).                                                                                                                                  |
+| `scripts/query_tip.sh`                    | Show current epoch, slot, and block height.                                                                                                                                        |
+| `scripts/build_tx.sh`                     | Build a raw transaction (`--sender-addr`, `--receiver-addr`, `--sender-skey`, optional `--amount`, `--metadata-file`, `--out-tx`).                                                 |
+| `scripts/sign_tx.sh`                      | Sign a raw transaction (`--tx-body`, `--signing-keys`, `--out-file`).                                                                                                              |
+| `scripts/submit_tx.sh`                    | Submit a signed transaction to the node (`--signed-tx`).                                                                                                                           |
+| `scripts/create_plutus_script_address.sh` | Derive a Plutus script address from a compiled `.plutus` file and optional datum hash.                                                                                             |
+| `scripts/spend_from_script.sh`            | Build and submit a transaction spending from a script output (requires `--script-address`, `--script-file`, `--datum-file`, `--redeemer-file`, `--output-addr`, `--signing-keys`). |
 
-#### `scripts/generate_keys.sh`
+## Terminal UI Implementation
 
-Generates a payment keypair and derives the address.
+To guide users through offline/online steps with a menu-driven interface, we provide a **whiptail** wrapper.
 
-```bash
-Usage:
-  ./scripts/generate_keys.sh <wallet-name>
+### Project Structure for UI
 
-Example:
-  ./scripts/generate_keys.sh alice-wallet
-  # → Creates:
-  #   keys/alice-wallet.payment.vkey
-  #   keys/alice-wallet.payment.skey
-  #   keys/alice-wallet.payment.addr
+```text
+crd_cli-util4/
+├─ config.sh
+├─ lib.sh
+├─ menu.sh
+├─ scripts/
+├─ examples/
+└─ keys/
 ```
 
-* Checks for `cardano-cli` in `PATH`.
-* Verifies/creates `keys/` directory.
-* Runs:
-
-  ```bash
-  cardano-cli address key-gen \
-    --verification-key-file keys/alice-wallet.payment.vkey \
-    --signing-key-file      keys/alice-wallet.payment.skey
-
-  cardano-cli address build \
-    ${NETWORK} \
-    --payment-verification-key-file keys/alice-wallet.payment.vkey \
-    --out-file keys/alice-wallet.payment.addr
-  ```
-
-> **Note**: Store keys securely (e.g., hardware wallet, encrypted vault); these scripts write plain-text files.
-
-### UTxO & Chain Queries
-
-#### `scripts/query_utxo.sh`
-
-Lists UTxOs for a given address, optionally pretty-printed with `jq`.
+### config.sh
 
 ```bash
-Usage:
-  ./scripts/query_utxo.sh <payment.addr> [--json]
-
-Examples:
-  ./scripts/query_utxo.sh keys/alice-wallet.payment.addr
-  ./scripts/query_utxo.sh keys/alice-wallet.payment.addr --json
+#!/usr/bin/env bash
+NETWORK="--testnet-magic 1097911063"
+PROTOCOL_FILE="protocol.json"
+KEYS_DIR="./keys"
 ```
 
-* If `jq` is installed and `--json` is passed, outputs formatted JSON; else uses default CLI table.
-
-#### `scripts/query_tip.sh`
-
-Fetches the current chain tip (slot, epoch, block).
+### lib.sh (extract functions)
 
 ```bash
-Usage:
-  ./scripts/query_tip.sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-Example:
-  ./scripts/query_tip.sh
-  # → "At epoch 296, block 1234567, slot 4567890"
+generate_keys() {
+  local name="$1"
+  mkdir -p "$KEYS_DIR"
+  cardano-cli address key-gen --verification-key-file "$KEYS_DIR/${name}.payment.vkey" --signing-key-file "$KEYS_DIR/${name}.payment.skey"
+  cardano-cli address build ${NETWORK} --payment-verification-key-file "$KEYS_DIR/${name}.payment.vkey" --out-file "$KEYS_DIR/${name}.payment.addr"
+  echo "Keys and address generated in $KEYS_DIR"
+}
+# Similarly extract build_tx(), sign_tx(), submit_tx(), create_script_address(), spend_from_script()
 ```
 
-### Transaction Workflows
-
-> **Forward-Looking**: As Cardano adds features (inline datums, reference inputs), update these scripts accordingly.
-
-#### `scripts/build_tx.sh`
-
-Aggregates UTxOs, calculates fees, and constructs a raw transaction (no signing).
+### menu.sh (whiptail example)
 
 ```bash
-Usage:
-  ./scripts/build_tx.sh \
-    --sender-addr <sender.addr> \
-    --receiver-addr <receiver.addr> \
-    --sender-skey  <sender.skey> \
-    [--amount <lovelace>] \
-    [--metadata-file <file.json>] \
-    [--out-tx <raw.tx>]
+#!/usr/bin/env bash
+set -euo pipefail
+source ./config.sh
+source ./lib.sh
 
-Example:
-  ./scripts/build_tx.sh \
-    --sender-addr keys/alice-wallet.payment.addr \
-    --receiver-addr keys/bob-wallet.payment.addr \
-    --sender-skey keys/alice-wallet.payment.skey \
-    --amount 2000000 \
-    --out-tx tx.raw
+while true; do
+  CHOICE=$(whiptail --backtitle "crd_cli-util4 GUI" --title "Main Menu" --menu "Select action:" 15 60 6 \
+    1 "Generate Keys" 2 "Build Transaction" 3 "Sign Transaction" 4 "Submit Transaction" 5 "Plutus Utilities" 6 "Exit" 3>&1 1>&2 2>&3)
+  [ $? -ne 0 ] && break
+  clear
+  case "$CHOICE" in
+    1) name=$(whiptail --inputbox "Wallet name:" 8 40 3>&1 1>&2 2>&3); generate_keys "$name";;
+    2) build_tx_flow;;
+    3) sign_tx_flow;;
+    4) submit_tx_flow;;
+    5) plutus_menu;;
+    6) break;;
+  esac
+  read -p "Press ENTER to continue..."
+done
+clear
 ```
 
-1. Queries UTxOs at sender address.
-2. Calculates minimum fee via `cardano-cli transaction calculate-min-fee`.
-3. Builds raw transaction with placeholder TTL.
-4. Outputs `tx.raw` ready for signing.
-
-> **Check**: Does it handle multi-asset? Not yet; extend `--tx-out` or add `--mint` flags as needed.
-
-#### `scripts/sign_tx.sh`
-
-Signs a raw transaction with one or more signing keys.
-
-```bash
-Usage:
-  ./scripts/sign_tx.sh \
-    --tx-body <raw.tx> \
-    --signing-keys <skey1> [<skey2> ...] \
-    --out-file <signed.tx>
-
-Example:
-  ./scripts.sign_tx.sh \
-    --tx-body tx.raw \
-    --signing-keys keys/alice-wallet.payment.skey \
-    --out-file tx.signed
-```
-
-* Chain multiple `--signing-key-file` options for multi-signature or script-witness transactions.
-* Verify TX body hash matches intended inputs/outputs.
-
-#### `scripts/submit_tx.sh`
-
-Submits a signed transaction to the node.
-
-```bash
-Usage:
-  ./scripts/submit_tx.sh \
-    --signed-tx <signed.tx>
-
-Example:
-  ./scripts/submit_tx.sh --signed-tx tx.signed
-```
-
-* Confirms success via node response.
-* Fails if node is offline or network tag is wrong.
-
-### Basic Plutus Helpers
-
-> **Skepticism**: Always simulate on testnet, verify datum/redeemer schema, and confirm script budget usage.
-
-#### `scripts/create_plutus_script_address.sh`
-
-Derives a script address from a compiled Plutus script and optional datum hash.
-
-```bash
-Usage:
-  ./scripts/create_plutus_script_address.sh \
-    --script-file <script.plutus> \
-    [--datum-hash <datum.hash>] \
-    --out-file <script.addr>
-
-Example:
-  ./scripts/create_plutus_script_address.sh \
-    --script-file contracts/myscript.plutus \
-    --out-file contracts/myscript.addr
-```
-
-* Reads script CBOR, runs `cardano-cli address build-script` with proper flags.
-
-#### `scripts/spend_from_script.sh`
-
-Builds and submits a transaction spending from a script output, providing redeemer and datum.
-
-```bash
-Usage:
-  ./scripts/spend_from_script.sh \
-    --script-address <script.addr> \
-    --script-file    <script.plutus> \
-    --datum-file     <datum.json> \
-    --redeemer-file  <redeemer.json> \
-    --output-addr    <receiver.addr> \
-    --signing-keys   <skey1> [<skey2> ...] \
-    --out-tx         <raw.tx> \
-    --network-param  " <--testnet-magic 1097911063>"
-
-Example:
-  ./scripts/spend_from_script.sh \
-    --script-address contracts/myscript.addr \
-    --script-file    contracts/myscript.plutus \
-    --datum-file     contracts/datum.json \
-    --redeemer-file  contracts/redeemer.json \
-    --output-addr    keys/alice-wallet.payment.addr \
-    --signing-keys   keys/alice-wallet.payment.skey \
-    --out-tx         tx_spend.raw
-```
-
-* Validates datum/redeemer schema against compiled script.
-* Use `cardano-cli transaction build` with script-related flags; always test on testnet first.
+* **Flow functions** (`build_tx_flow`, etc.) prompt via `whiptail` then call corresponding `lib.sh` functions.
+* Place full UI demos in `examples/` so users can see complete scripts without altering core logic.
 
 ## Design Philosophy
 
-1. **Transparency & Learning**: Plain shell scripts—with comments explaining CLI flags—help you understand UTxO aggregation, fee calculation, and Plutus cost estimation.
-2. **Modularity & Extensibility**: Configuration blocks isolate network and file-path variables. When new CLI flags appear (reference inputs, inline datums), update only those blocks.
-3. **Security Mindset**: Keys are stored externally; signing is always explicit. For hardware-wallet integration, extend these templates with appropriate flags (e.g., `--witness-slot`, hardware wallet CLI options).
+1. **Transparency & Learning:** Plain shell + whiptail menus expose every step of the CLI workflow.
+2. **Modularity:** Single `config.sh` + `lib.sh` for reusable code; `menu.sh` for UI.
+3. **Offline/Online Separation:** UI can warn or disable options based on node connectivity.
+
+## Tasks to Complete for Production
+
+| Task                                              | Subtasks                                                                                                                                                                                                                    | Status |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----: |
+| **Centralize Configuration**                      | - Extract network, file-path, and protocol settings into `config.sh`  <br> - Update all scripts and the UI to source `config.sh`                                                                                            |  \[ ]  |
+| **Refactor Core Logic into `lib.sh`**             | - Encapsulate UTxO selection, fee calculation, transaction building, signing, submission, and Plutus helpers  <br> - Have both CLI scripts and the UI source these functions for consistency                                |  \[ ]  |
+| **Implement Terminal UI Skeleton**                | - Define architecture of `menu.sh`, `config.sh`, and `lib.sh`  <br> - Map the user flow for each operation  <br> - Identify optimizations: input validation, progress bars, caching                                         |  \[ ]  |
+| **Populate `examples/` Directory**                | - Provide end-to-end example scripts for common flows (send ADA, mint token, spend script)  <br> - Document preconditions, outputs, and verification steps                                                                  |  \[ ]  |
+| **Add Multi-Asset & Advanced Plutus Support**     | - Extend fee-calculation and UTxO parsing for native tokens  <br> - Introduce flags and helpers for inline datums and reference inputs  <br> - Update the UI to let users select token bundles and script options           |  \[ ]  |
+| **Integrate Hardware-Wallet & Key-Vault Options** | - Add a hardware-wallet signing flow with `cardano-hw-cli`  <br> - Offer encrypted-vault signing using GPG for private keys                                                                                                 |  \[ ]  |
+| **Automated Testing & CI Pipeline**               | - Write shell/unit tests for each `lib.sh` function  <br> - Implement a GitHub Actions workflow that spins up a sandbox node and runs example flows to verify on-chain effects                                              |  \[ ]  |
+| **Robust Error Handling & UX Polish**             | - Ensure input prompts validate and loop until correct  <br> - Provide clear error messages and confirmations before irreversible actions                                                                                   |  \[ ]  |
+| **Comprehensive Documentation**                   | - Update README with tasks, terminal UI overview, and scripts table  <br> - Maintain a versioned CHANGELOG                                                                                                                  |  \[ ]  |
+| **Release & Versioning Strategy**                 | - Tag a `v1.0` release when core flows are stable and tested  <br> - Define branching (e.g., `main` for prod, `dev` for features)  <br> - Publish release assets including `config.sh`, `lib.sh`, `menu.sh`, and `scripts/` |  \[ ]  |
 
 ## Contributing
 
-1. **Fork & Branch**: Create a descriptive branch name (e.g., `feature/inline-datums`).
-2. **Examples & Tests**: Add an `examples/` entry for each new or modified script.
-3. **Update Documentation**: Reflect any changes to CLI flags or usage examples in this README.
-4. **Security Audit**: Note any new security considerations (e.g., handling private keys).
-5. **Submit a Pull Request**: We review for correctness on testnet/mainnet before merging.
+1. Fork & branch (e.g., `feature/ui-dialog`).
+2. Add or update UI examples in `examples/`.
+3. Ensure new flows source `config.sh` + `lib.sh` and update README accordingly.
+4. Submit a PR with tests or manual instructions for verifying the UI.
 
 ## License
 
