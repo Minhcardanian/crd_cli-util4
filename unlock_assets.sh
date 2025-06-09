@@ -1,11 +1,11 @@
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 
-SELECT_UTXO="./select-utxo.sh"
 FILE_UTILS="./file_utils.sh"
 
 # Import modules
 source "$FILE_UTILS"
-source "$SELECT_UTXO"
 
 # Function to unlock asset
 unlock_asset() {
@@ -15,10 +15,7 @@ unlock_asset() {
     script_plutus=$selected_file
 
     # Build address with Plutus script
-    if cardano-cli address build \
-        --payment-script-file "$script_plutus" \
-        --out-file script.addr \
-        --testnet-magic 2; then
+    if run_plutus_script "$script_plutus" script.addr; then
         echo "Smart contract address created: script.addr"
     else
         echo "Error building smart contract address."
@@ -58,15 +55,13 @@ unlock_asset() {
 
     # Step 1: Build the transaction
     echo "Building unlock transaction..."
-    if cardano-cli conway transaction build \
-        --tx-in "$tx_in" \
-        --tx-in-collateral "$tx_collateral" \
-        --testnet-magic 2 \
-        --tx-in-script-file "$script_plutus" \
-        --tx-in-inline-datum-present \
-        --tx-in-redeemer-file "$redeemer_file" \
-        --change-address $(< payment.addr) \
-        --out-file unlock.tx; then
+    if build_tx --tx-in "$tx_in" \
+                --tx-in-collateral "$tx_collateral" \
+                --tx-in-script-file "$script_plutus" \
+                --tx-in-inline-datum-present \
+                --tx-in-redeemer-file "$redeemer_file" \
+                --change-address $(< payment.addr) \
+                --out-file unlock.tx; then
         echo "Transaction built successfully."
     else
         echo "Error building the transaction."
@@ -75,10 +70,9 @@ unlock_asset() {
 
     # Step 2: Sign the transaction
     echo "Signing the transaction..."
-    if cardano-cli conway transaction sign \
-        --tx-file unlock.tx \
-        --signing-key-file payment.skey \
-        --out-file unlock.tx.signed; then
+    if sign_tx --tx-body-file unlock.tx \
+              --signing-key-file payment.skey \
+              --out-file unlock.tx.signed; then
         echo "Transaction signed successfully."
     else
         echo "Error signing the transaction."
@@ -87,9 +81,7 @@ unlock_asset() {
 
     # Step 3: Submit the transaction
     echo "Submitting the transaction..."
-    if cardano-cli conway transaction submit \
-        --testnet-magic 2 \
-        --tx-file unlock.tx.signed; then
+    if submit_tx --tx-file unlock.tx.signed; then
         echo "Transaction submitted successfully."
     else
         echo "Error submitting the transaction."
@@ -98,7 +90,7 @@ unlock_asset() {
 
     # Step 4: Check the txid of the transaction
     echo "Checking the txid..."
-    txid=$(cardano-cli conway transaction txid --tx-file unlock.tx.signed)
+    txid=$($CARDANO_CLI conway transaction txid --tx-file unlock.tx.signed)
     if [[ -n "$txid" ]]; then
         echo "Transaction hash (TXID): $txid"
     else

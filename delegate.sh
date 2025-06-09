@@ -1,5 +1,7 @@
 
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 
 # Paths to important files
 STAKE_VKEY="stake.vkey"
@@ -7,7 +9,6 @@ STAKE_SKEY="stake.skey"
 PAYMENT_ADDR_FILE="payment.addr"
 STAKE_ADDR_FILE="stake.addr"
 PAYMENT_SKEY="payment.skey"
-NETWORK="--testnet-magic 2" # Use testnet; change to "--mainnet" for mainnet
 PAYMENT_ADDR=$(<payment.addr)
 STAKE_ADDR=$(<stake.addr)
 DEGREG_CERT="dereg.cert"
@@ -16,7 +17,7 @@ DEGREG_CERT="dereg.cert"
 SELECT_UTXO="./select-utxo.sh"
 FILE_UTILS="./file_utils.sh"
 
-STAKE_KEY_REGISTERED=$(cardano-cli query stake-address-info --address "$(cat $STAKE_ADDR_FILE)" $NETWORK | jq -r '.[0].stakeDelegation')
+STAKE_KEY_REGISTERED=$($CARDANO_CLI query stake-address-info --address "$(cat $STAKE_ADDR_FILE)" $NETWORK | jq -r '.[0].stakeDelegation')
 
 # Check if required external files exist
 if [[ ! -f $SELECT_UTXO || ! -f $FILE_UTILS ]]; then
@@ -59,7 +60,7 @@ create_stake_certificates() {
 
   if [[ "$STAKE_KEY_REGISTERED" == "null" ]]; then
     echo "Creating stake registration certificate..."
-    cardano-cli conway stake-address registration-certificate \
+    $CARDANO_CLI conway stake-address registration-certificate \
       --stake-verification-key-file $STAKE_VKEY \
       --key-reg-deposit-amt 2000000 \
       --out-file $STAKE_CERT
@@ -68,7 +69,7 @@ create_stake_certificates() {
   fi
 
   echo "Creating delegation certificate for pool $POOL_ID..."
-  cardano-cli conway stake-address stake-delegation-certificate \
+  $CARDANO_CLI conway stake-address stake-delegation-certificate \
     --stake-verification-key-file $STAKE_VKEY \
     --stake-pool-id $POOL_ID \
     --out-file $DELEGATION_CERT
@@ -77,7 +78,7 @@ create_stake_certificates() {
 # Function to create undelegation certificate
 create_undelegation_certificate() {
   echo "Creating undelegation certificate..."
-  cardano-cli conway stake-address deregistration-certificate \
+  $CARDANO_CLI conway stake-address deregistration-certificate \
     --stake-verification-key-file "$STAKE_VKEY" \
     --key-reg-deposit-amt 2000000 \
     --out-file "$DEGREG_CERT"
@@ -85,7 +86,7 @@ create_undelegation_certificate() {
 
 # Function to check for rewards
 check_rewards() {
-  REWARDS=$(cardano-cli conway query stake-address-info --address "$STAKE_ADDR" $NETWORK | jq -r '.[0].rewardAccountBalance')
+  REWARDS=$($CARDANO_CLI conway query stake-address-info --address "$STAKE_ADDR" $NETWORK | jq -r '.[0].rewardAccountBalance')
   if [[ "$REWARDS" == "null" || "$REWARDS" -eq 0 ]]; then
     echo "No rewards available to withdraw."
     return 1
@@ -104,7 +105,7 @@ submit_transaction() {
   local INCLUDE_UNDELEGATION_CERT=$2 # Optional argument to include undelegation certificate
 
   echo "Building transaction..."
-  cardano-cli conway transaction build \
+  $CARDANO_CLI conway transaction build \
     --tx-in "$SELECTED_UTXO" \
     --change-address "$(cat $PAYMENT_ADDR_FILE)" \
     --certificate-file $DELEGATION_CERT \
@@ -114,7 +115,7 @@ submit_transaction() {
 
   # Include stake registration certificate if needed
   if [[ "$INCLUDE_STAKE_CERT" == "true" ]]; then
-    cardano-cli conway transaction build \
+    $CARDANO_CLI conway transaction build \
       --tx-in "$SELECTED_UTXO" \
       --change-address "$(cat $PAYMENT_ADDR_FILE)" \
       --certificate-file $STAKE_CERT \
@@ -126,7 +127,7 @@ submit_transaction() {
 
   # Include undelegation certificate if needed
   if [[ "$INCLUDE_UNDELEGATION_CERT" == "true" ]]; then
-    cardano-cli conway transaction build \
+    $CARDANO_CLI conway transaction build \
       --tx-in "$SELECTED_UTXO" \
       --change-address "$(cat $PAYMENT_ADDR_FILE)" \
       --certificate-file $UNDELEGATION_CERT \
@@ -136,14 +137,14 @@ submit_transaction() {
   fi
 
   echo "Signing transaction..."
-  cardano-cli conway transaction sign \
+  $CARDANO_CLI conway transaction sign \
     --tx-body-file $TX_RAW \
     --signing-key-file $PAYMENT_SKEY \
     --signing-key-file $STAKE_SKEY \
     --out-file $TX_SIGNED
 
   echo "Submitting transaction..."
-  cardano-cli conway transaction submit \
+  $CARDANO_CLI conway transaction submit \
     --tx-file $TX_SIGNED \
     $NETWORK
 }
@@ -157,7 +158,7 @@ submit_undelegation_transaction() {
 
   if check_rewards; then
     # Case with rewards to withdraw
-    cardano-cli conway transaction build \
+    $CARDANO_CLI conway transaction build \
       --tx-in "$SELECTED_UTXO" \
       --change-address "$PAYMENT_ADDR" \
       --withdrawal "$STAKE_ADDR+$REWARDS" \
@@ -167,7 +168,7 @@ submit_undelegation_transaction() {
       $NETWORK
   else
     # Case without rewards
-    cardano-cli conway transaction build \
+    $CARDANO_CLI conway transaction build \
       --tx-in "$SELECTED_UTXO" \
       --change-address "$PAYMENT_ADDR" \
       --certificate-file "$DEGREG_CERT" \
@@ -177,14 +178,14 @@ submit_undelegation_transaction() {
   fi
 
   echo "Signing transaction..."
-  cardano-cli conway transaction sign \
+  $CARDANO_CLI conway transaction sign \
     --tx-body-file "$TX_RAW" \
     --signing-key-file "$PAYMENT_SKEY" \
     --signing-key-file "$STAKE_SKEY" \
     --out-file "$TX_SIGNED"
 
   echo "Submitting transaction..."
-  cardano-cli conway transaction submit \
+  $CARDANO_CLI conway transaction submit \
     --tx-file "$TX_SIGNED" \
     $NETWORK
 }
@@ -202,7 +203,7 @@ is_delegated() {
 # Function to withdraw rewards
 withdraw_rewards() {
   echo "Withdrawing rewards..."
-  cardano-cli conway transaction build \
+  $CARDANO_CLI conway transaction build \
     --tx-in "$SELECTED_UTXO" \
     --change-address "$PAYMENT_ADDR" \
     --withdrawal "$STAKE_ADDR" \
@@ -210,12 +211,12 @@ withdraw_rewards() {
     --out-file "withdrawal.raw" \
     $NETWORK
 
-  cardano-cli conway transaction sign \
+  $CARDANO_CLI conway transaction sign \
     --tx-body-file "withdrawal.raw" \
     --signing-key-file $PAYMENT_SKEY \
     --out-file "withdrawal.signed"
 
-  cardano-cli conway transaction submit \
+  $CARDANO_CLI conway transaction submit \
     --tx-file "withdrawal.signed" \
     $NETWORK
 

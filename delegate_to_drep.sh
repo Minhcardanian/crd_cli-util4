@@ -1,4 +1,6 @@
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 
 # Ask for user input to select an option
 clear
@@ -15,25 +17,25 @@ if [[ "$choice" == "3" ]]; then
   read -p "Enter the DRep ID: " drep_id
 fi
 
-# Execute the corresponding cardano-cli command based on the user's choice
+# Execute the corresponding $CARDANO_CLI command based on the user's choice
 case $choice in
   1) 
     echo "Delegating vote with Always Abstain..."
-    cardano-cli conway stake-address vote-delegation-certificate \
+    $CARDANO_CLI conway stake-address vote-delegation-certificate \
       --stake-verification-key-file stake.vkey \
       --always-abstain \
       --out-file vote-deleg.cert
     ;;
   2) 
     echo "Delegating vote with No Confidence..."
-    cardano-cli conway stake-address vote-delegation-certificate \
+    $CARDANO_CLI conway stake-address vote-delegation-certificate \
       --stake-verification-key-file stake.vkey \
       --always-no-confidence \
       --out-file vote-deleg.cert
     ;;
   3) 
     echo "Delegating vote to DRep with ID: $drep_id..."
-    cardano-cli conway stake-address vote-delegation-certificate \
+    $CARDANO_CLI conway stake-address vote-delegation-certificate \
       --stake-verification-key-file stake.vkey \
       --drep-key-hash "$drep_id" \
       --out-file vote-deleg.cert
@@ -51,24 +53,24 @@ esac
 
 # Perform the transaction
 echo "Building transaction..."
-cardano-cli conway transaction build \
-  --tx-in $(cardano-cli query utxo --address $(< payment.addr) --testnet-magic 2 --out-file /dev/stdout | jq -r 'keys[0]') \
+$CARDANO_CLI conway transaction build \
+  --tx-in $($CARDANO_CLI query utxo --address $(< payment.addr) $NETWORK --out-file /dev/stdout | jq -r 'keys[0]') \
   --change-address $(< payment.addr) \
   --certificate-file vote-deleg.cert \
   --witness-override 2 \
   --out-file tx.raw \
-  --testnet-magic 2
+  $NETWORK
 
 echo "Signing transaction..."
-cardano-cli conway transaction sign \
+$CARDANO_CLI conway transaction sign \
   --tx-body-file tx.raw \
   --signing-key-file payment.skey \
   --signing-key-file stake.skey \
   --out-file tx.signed
 
 echo "Submitting transaction..."
-cardano-cli conway transaction submit \
+$CARDANO_CLI conway transaction submit \
   --tx-file tx.signed \
-  --testnet-magic 2
+  $NETWORK
 
 echo "Vote delegation transaction completed."

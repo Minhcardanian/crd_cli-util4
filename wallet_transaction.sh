@@ -1,11 +1,9 @@
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 
-# Path to wallet generation and UTXO selection modules
+# Path to wallet generation module
 WALLET_GENERATE="./wallet-generate.sh"
-SELECT_UTXO="./select-utxo.sh"
-
-# Source the UTXO selection script
-source "$SELECT_UTXO"
 
 # Check if the wallet exists
 check_and_generate_wallet() {
@@ -19,66 +17,31 @@ check_and_generate_wallet() {
 
 # Function to perform the transaction
 perform_transaction() {
-    # Source the UTXO selection module
-    select_utxo "payment"
-
-    # Use the selected UTXO
+    select_utxo "payment" || return 1
     if [[ -z "$SELECTED_UTXO" ]]; then
-        echo "No UTXO selected. Exiting."
-        return
+        echo "No UTXO selected. Exiting." >&2
+        return 1
     fi
     echo "Using UTXO: $SELECTED_UTXO for the transaction."
-    tx_in="$SELECTED_UTXO"
+    local tx_in="$SELECTED_UTXO"
 
     read -p "Enter the amount (tx-mount): " tx_mount
     read -p "Enter the recipient address (tx-out): " tx_out
 
-    # Build the transaction
-    echo "Building the transaction..."
-    if cardano-cli conway transaction build \
-        --testnet-magic 2 \
-        --tx-in "$tx_in" \
-        --tx-out "$tx_out+$tx_mount" \
-        --change-address "$(cat payment.addr)" \
-        --out-file simple-tx.raw; then
-        echo "Transaction successfully built."
-    else
-        echo "Error building the transaction."
-        exit 1
-    fi
+    build_tx --tx-in "$tx_in" \
+             --tx-out "$tx_out+$tx_mount" \
+             --change-address "$(cat payment.addr)" \
+             --out-file simple-tx.raw || return 1
 
-    # Sign the transaction
-    echo "Signing the transaction..."
-    if cardano-cli conway transaction sign \
-        --signing-key-file payment.skey \
-        --testnet-magic 2 \
-        --tx-body-file simple-tx.raw \
-        --out-file simple-tx.signed; then
-        echo "Transaction successfully signed."
-    else
-        echo "Error signing the transaction."
-        exit 1
-    fi
+    sign_tx --signing-key-file payment.skey \
+            --tx-body-file simple-tx.raw \
+            --out-file simple-tx.signed || return 1
 
-    # Submit the transaction
-    echo "Submitting the transaction..."
-    if cardano-cli conway transaction submit \
-        --tx-file simple-tx.signed \
-        --testnet-magic 2 > /dev/null 2>&1; then
-        echo "Transaction successfully submitted."
-    else
-        echo "Error submitting the transaction."
-        exit 1
-    fi
+    submit_tx --tx-file simple-tx.signed >/dev/null 2>&1 || return 1
 
-    # Retrieve txid
     echo "Retrieving transaction ID..."
-    if txid=$(cardano-cli conway transaction txid --tx-file simple-tx.signed); then
-        echo "Transaction ID (txid): $txid"
-    else
-        echo "Error retrieving transaction ID."
-        exit 1
-    fi
+    txid=$($CARDANO_CLI conway transaction txid --tx-file simple-tx.signed)
+    [[ -n "$txid" ]] && echo "Transaction ID (txid): $txid"
 }
 
 # Main function

@@ -1,4 +1,6 @@
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 
 # Configuration
 SELECT_UTXO="./select-utxo.sh"
@@ -10,7 +12,7 @@ source "$SELECT_UTXO"
 
 # Check if cardano-cli is installed
 check_cardano_cli() {
-    if ! command -v cardano-cli &> /dev/null; then
+    if ! command -v "$CARDANO_CLI" &> /dev/null; then
         echo "cardano-cli is not installed. Please install it first."
         exit 1
     fi
@@ -22,9 +24,9 @@ check_utxo() {
     local check_file="$selected_file"
     
     echo "Querying UTXO for the address in file: $check_file"
-    cardano-cli conway query utxo \
+    $CARDANO_CLI conway query utxo \
         --address "$(cat "$check_file")" \
-        --testnet-magic 2
+        $NETWORK
 }
 
 # Function to check transaction hash
@@ -38,9 +40,9 @@ check_txhash() {
 
     echo "Checking transaction details for hash: $TX_HASH"
     local TX_DETAILS
-    TX_DETAILS=$(cardano-cli query utxo \
+    TX_DETAILS=$($CARDANO_CLI query utxo \
         --tx-in "$TX_HASH" \
-        --testnet-magic 2 2>&1)
+        $NETWORK 2>&1)
 
     if echo "$TX_DETAILS" | grep -q "Error"; then
         echo "Transaction does not exist or cannot be queried."

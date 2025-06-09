@@ -1,4 +1,6 @@
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 
 # Function to execute a script based on user choice
 execute_choice() {

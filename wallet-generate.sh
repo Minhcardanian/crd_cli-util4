@@ -1,9 +1,11 @@
 
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 
 # Check required tools before running
-command -v cardano-address > /dev/null || { echo "Error: 'cardano-address' is not installed."; exit 1; }
-command -v cardano-cli > /dev/null || { echo "Error: 'cardano-cli' is not installed."; exit 1; }
+command -v "$CARDANO_ADDRESS" > /dev/null || { echo "Error: '$CARDANO_ADDRESS' is not installed."; exit 1; }
+command -v "$CARDANO_CLI" > /dev/null || { echo "Error: '$CARDANO_CLI' is not installed."; exit 1; }
 
 # Display menu options
 while true; do
@@ -18,7 +20,7 @@ while true; do
         1)
             # Create new wallet
             echo "Creating a new wallet..."
-            cardano-address recovery-phrase generate --size 24 > phrase.prv
+            $CARDANO_ADDRESS recovery-phrase generate --size 24 > phrase.prv
             echo "Recovery phrase has been saved to 'phrase.prv'. Keep it safe!"
             ;;
         2)
@@ -38,35 +40,35 @@ while true; do
     esac
 
         # Create root key
-    cardano-address key from-recovery-phrase Shelley < phrase.prv > root.prv
+    $CARDANO_ADDRESS key from-recovery-phrase Shelley < phrase.prv > root.prv
 
     # Create payment keys
-    cardano-address key child 1852H/1815H/0H/0/0 < root.prv > payment.prv
+    $CARDANO_ADDRESS key child 1852H/1815H/0H/0/0 < root.prv > payment.prv
 
-    cardano-address key public --without-chain-code < payment.prv > payment.pub
+    $CARDANO_ADDRESS key public --without-chain-code < payment.prv > payment.pub
 
-    cardano-cli key convert-cardano-address-key --shelley-payment-key \
+    $CARDANO_CLI key convert-cardano-address-key --shelley-payment-key \
         --signing-key-file payment.prv \
         --out-file payment.skey
 
-    cardano-cli key verification-key \
+    $CARDANO_CLI key verification-key \
         --signing-key-file payment.skey \
         --verification-key-file payment.vkey
 
 
 
-    cat root.prv | cardano-address key child 1852H/1815H/0H/2/0 > stake.prv
+    cat root.prv | $CARDANO_ADDRESS key child 1852H/1815H/0H/2/0 > stake.prv
 
-    cardano-cli key convert-cardano-address-key \
+    $CARDANO_CLI key convert-cardano-address-key \
         --signing-key-file stake.prv \
         --shelley-stake-key \
         --out-file stake.skey
 
-    cardano-cli key verification-key \
+    $CARDANO_CLI key verification-key \
         --signing-key-file stake.skey \
         --verification-key-file Ext_ShelleyStake.vkey
 
-    cardano-cli key non-extended-key \
+    $CARDANO_CLI key non-extended-key \
         --extended-verification-key-file Ext_ShelleyStake.vkey \
         --verification-key-file stake.vkey
 
@@ -76,21 +78,21 @@ while true; do
 
 
 
-    cardano-cli address build \
+    $CARDANO_CLI address build \
         --payment-verification-key-file payment.vkey \
-        --testnet-magic 2 \
+        $NETWORK \
         --stake-verification-key-file stake.vkey \
         --out-file payment.addr
 
 
-    cardano-cli conway stake-address build \
+    $CARDANO_CLI conway stake-address build \
         --stake-verification-key-file stake.vkey \
         --out-file stake.addr \
-        --testnet-magic 2
+        $NETWORK
         
     # Display UTXO information
     echo "Payment address created: $(cat payment.addr)"
-    cardano-cli query utxo --address "$(cat payment.addr)" --testnet-magic 2
+    $CARDANO_CLI query utxo --address "$(cat payment.addr)" $NETWORK
 
     echo "Program completed. The following important files have been created:"
     echo "- phrase.prv: Recovery phrase"

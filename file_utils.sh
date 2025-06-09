@@ -1,12 +1,12 @@
-
-
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 select_poolid() {
-    # Fetch the list of pool IDs from the cardano-cli command
-    pools=$(cardano-cli query stake-pools $NETWORK 2>/dev/null)
+    # Fetch the list of pool IDs from the $CARDANO_CLI command
+    pools=$($CARDANO_CLI query stake-pools $NETWORK 2>/dev/null)
 
     # Check if the command ran successfully
     if [[ $? -ne 0 || -z "$pools" ]]; then
-        echo "Unable to fetch the pool list. Please check your cardano-cli setup or the network connection."
+        echo "Unable to fetch the pool list. Please check your $CARDANO_CLI setup or the network connection."
         exit 1
     fi
 

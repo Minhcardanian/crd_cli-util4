@@ -1,14 +1,13 @@
 
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
+source "$(dirname "$0")/lib.sh"
 
-SELECT_UTXO="./select-utxo.sh"
 FILE_UTILS="./file_utils.sh"
 
 # Import modules
 source "$FILE_UTILS"
-source "$SELECT_UTXO"
 
-TESTNET_MAGIC=2
 PAYMENT_ADDR_FILE="payment.addr"
 SIGNING_KEY_FILE="payment.skey"
 
@@ -48,36 +47,28 @@ lock_asset() {
     datum_file="$selected_file"
 
     echo ">> Building smart contract address..."
-    cardano-cli address build \
-        --payment-script-file "$script_plutus" \
-        --out-file script.addr \
-        --testnet-magic "$TESTNET_MAGIC"
+    run_plutus_script "$script_plutus" script.addr
     check_command $? "Failed to build smart contract address."
 
     echo ">> Building transaction..."
-    cardano-cli conway transaction build \
-        --tx-in "$tx_in" \
-        --tx-out "$(cat script.addr)+$tx_amount" \
-        --tx-out-inline-datum-file "$datum_file" \
-        --change-address "$(cat "$PAYMENT_ADDR_FILE")" \
-        --testnet-magic "$TESTNET_MAGIC" \
-        --out-file lock.tx
+    build_tx --tx-in "$tx_in" \
+             --tx-out "$(cat script.addr)+$tx_amount" \
+             --tx-out-inline-datum-file "$datum_file" \
+             --change-address "$(cat "$PAYMENT_ADDR_FILE")" \
+             --out-file lock.tx
     check_command $? "Failed to build transaction."
 
     echo ">> Signing transaction..."
-    cardano-cli conway transaction sign \
-        --tx-file lock.tx \
-        --signing-key-file "$SIGNING_KEY_FILE" \
-        --out-file lock.tx.signed
+    sign_tx --tx-body-file lock.tx \
+            --signing-key-file "$SIGNING_KEY_FILE" \
+            --out-file lock.tx.signed
     check_command $? "Failed to sign transaction."
 
     echo ">> Submitting transaction..."
-    cardano-cli conway transaction submit \
-        --testnet-magic "$TESTNET_MAGIC" \
-        --tx-file lock.tx.signed
+    submit_tx --tx-file lock.tx.signed
     check_command $? "Failed to submit transaction."
 
-    txid=$(cardano-cli conway transaction txid --tx-file lock.tx.signed)
+    txid=$($CARDANO_CLI conway transaction txid --tx-file lock.tx.signed)
     if [[ -n "$txid" ]]; then
         echo "Transaction successful!"
         echo "Transaction hash (TXID): $txid"
