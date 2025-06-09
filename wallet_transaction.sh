@@ -1,4 +1,5 @@
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
 
 # Path to wallet generation and UTXO selection modules
 WALLET_GENERATE="./wallet-generate.sh"
@@ -35,8 +36,8 @@ perform_transaction() {
 
     # Build the transaction
     echo "Building the transaction..."
-    if cardano-cli conway transaction build \
-        --testnet-magic 2 \
+    if $CARDANO_CLI conway transaction build \
+        $NETWORK \
         --tx-in "$tx_in" \
         --tx-out "$tx_out+$tx_mount" \
         --change-address "$(cat payment.addr)" \
@@ -49,9 +50,9 @@ perform_transaction() {
 
     # Sign the transaction
     echo "Signing the transaction..."
-    if cardano-cli conway transaction sign \
+    if $CARDANO_CLI conway transaction sign \
         --signing-key-file payment.skey \
-        --testnet-magic 2 \
+        $NETWORK \
         --tx-body-file simple-tx.raw \
         --out-file simple-tx.signed; then
         echo "Transaction successfully signed."
@@ -62,9 +63,9 @@ perform_transaction() {
 
     # Submit the transaction
     echo "Submitting the transaction..."
-    if cardano-cli conway transaction submit \
+    if $CARDANO_CLI conway transaction submit \
         --tx-file simple-tx.signed \
-        --testnet-magic 2 > /dev/null 2>&1; then
+        $NETWORK > /dev/null 2>&1; then
         echo "Transaction successfully submitted."
     else
         echo "Error submitting the transaction."
@@ -73,7 +74,7 @@ perform_transaction() {
 
     # Retrieve txid
     echo "Retrieving transaction ID..."
-    if txid=$(cardano-cli conway transaction txid --tx-file simple-tx.signed); then
+    if txid=$($CARDANO_CLI conway transaction txid --tx-file simple-tx.signed); then
         echo "Transaction ID (txid): $txid"
     else
         echo "Error retrieving transaction ID."

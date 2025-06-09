@@ -1,4 +1,5 @@
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
 
 SELECT_UTXO="./select-utxo.sh"
 
@@ -8,7 +9,7 @@ source "$SELECT_UTXO"
 
 # Function to generate dRep keys
 generate_drep_keys() {
-  cardano-cli conway governance drep key-gen \
+  $CARDANO_CLI conway governance drep key-gen \
     --verification-key-file drep.vkey \
     --signing-key-file drep.skey
 }
@@ -21,7 +22,7 @@ download_drep_metadata() {
 
 # Function to calculate dRep metadata hash
 calculate_metadata_hash() {
-  metadata_hash=$(cardano-cli conway governance drep metadata-hash \
+  metadata_hash=$($CARDANO_CLI conway governance drep metadata-hash \
     --drep-metadata-file drep.jsonld)
   echo $metadata_hash
 }
@@ -31,7 +32,7 @@ register_drep() {
   # Get the metadata hash
   metadata_hash=$(calculate_metadata_hash)
   
-  cardano-cli conway governance drep registration-certificate \
+  $CARDANO_CLI conway governance drep registration-certificate \
     --drep-verification-key-file drep.vkey \
     --key-reg-deposit-amt 500000000 \
     --drep-metadata-url https://raw.githubusercontent.com/cardano-foundation/CIPs/master/CIP-0119/examples/drep.jsonld \
@@ -46,37 +47,37 @@ build_drep_tx() {
 
 
   
-  cardano-cli conway transaction build \
+  $CARDANO_CLI conway transaction build \
     --tx-in "$tx_in" \
     --change-address $(< payment.addr) \
     --certificate-file drep-reg.cert  \
-    --testnet-magic 2 \
+    $NETWORK \
     --witness-override 2 \
     --out-file tx.raw
 }
 
 # Function to sign and submit dRep registration transaction
 sign_and_submit_drep_tx() {
-  cardano-cli conway transaction sign \
+  $CARDANO_CLI conway transaction sign \
     --tx-body-file tx.raw \
     --signing-key-file payment.skey \
     --signing-key-file drep.skey \
     --out-file tx.signed
   echo "txhash :"
-  cardano-cli conway transaction submit \
+  $CARDANO_CLI conway transaction submit \
     --tx-file tx.signed \
-    --testnet-magic 2
+    $NETWORK
 }
 
 export_drepid (){
-   cardano-cli conway governance drep id \
+   $CARDANO_CLI conway governance drep id \
   --drep-verification-key-file drep.vkey \
   --output-format hex > drep.id
 }
 
 # Function to query governance state
 query_governance_state() {
-  cardano-cli conway query gov-state --testnet-magic 2 > gov-state.json
+  $CARDANO_CLI conway query gov-state $NETWORK > gov-state.json
 
   cat gov-state.json
 }
@@ -97,7 +98,7 @@ create_vote() {
   # Gán giá trị cho biến toàn cục
   vote_file="${tx_in}-${index}.vote"
 
-  cardano-cli conway governance vote create \
+  $CARDANO_CLI conway governance vote create \
     --yes \
     --governance-action-tx-id "$tx_in" \
     --governance-action-index "$index" \
@@ -117,21 +118,21 @@ build_and_submit_vote_tx() {
     return 1
   fi
 
-  cardano-cli conway transaction build \
-    --tx-in "$(cardano-cli query utxo --address $(< payment.addr) --testnet-magic 2 --output-json | jq -r 'keys[0]')" \
+  $CARDANO_CLI conway transaction build \
+    --tx-in "$($CARDANO_CLI query utxo --address $(< payment.addr) $NETWORK --output-json | jq -r 'keys[0]')" \
     --change-address $(< payment.addr) \
     --vote-file "$vote_file" \
     --witness-override 2 \
     --out-file vote-tx.raw \
-    --testnet-magic 2
+    $NETWORK
 
-  cardano-cli conway transaction sign --tx-body-file vote-tx.raw \
+  $CARDANO_CLI conway transaction sign --tx-body-file vote-tx.raw \
     --signing-key-file drep.skey \
     --signing-key-file payment.skey \
     --out-file vote-tx.signed \
-    --testnet-magic 2
+    $NETWORK
 
-  cardano-cli conway transaction submit --tx-file vote-tx.signed --testnet-magic 2
+  $CARDANO_CLI conway transaction submit --tx-file vote-tx.signed $NETWORK
 }
 
 
