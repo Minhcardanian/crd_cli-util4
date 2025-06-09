@@ -1,5 +1,6 @@
 
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
 
 UTXO_FILE="utxo.json"
 
@@ -9,17 +10,17 @@ select_utxo() {
 
     if [[ "$input_type" == "payment" ]]; then
         # Query UTXO from the payment address
-        cardano-cli conway query utxo \
+        $CARDANO_CLI conway query utxo \
             --address "$(cat payment.addr)" \
-            --testnet-magic 2 \
+            $NETWORK \
             --output-json > "$UTXO_FILE"
         echo "UTXO list from payment address:"
 
     elif [[ "$input_type" == "script" ]]; then
         # Query UTXO from the script address
-        cardano-cli conway query utxo \
+        $CARDANO_CLI conway query utxo \
             --address "$(cat script.addr)" \
-            --testnet-magic 2 \
+            $NETWORK \
             --output-json > "$UTXO_FILE"
         echo "UTXO list from script address:"
 

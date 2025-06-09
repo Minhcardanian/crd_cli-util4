@@ -1,15 +1,5 @@
 #!/bin/bash
-
-# Path to the cardano-node directory
-CARDANO_NODE_PATH="/home/tuvu2/cardano-node"
-
-# Required parameters
-TOPOLOGY="$CARDANO_NODE_PATH/share/preview/topology.json"
-DB_PATH="$CARDANO_NODE_PATH/db"
-SOCKET_PATH="$CARDANO_NODE_PATH/db/node.socket"
-HOST_ADDR="0.0.0.0"
-PORT="3001"
-CONFIG="$CARDANO_NODE_PATH/share/preview/config.json"
+source "$(dirname "$0")/config.sh"
 
 # Set environment variable
 export CARDANO_NODE_SOCKET_PATH="$SOCKET_PATH"
@@ -22,7 +12,7 @@ is_node_running() {
 
 # Function to check synchronization status
 check_sync_status() {
-  cardano-cli query tip --testnet-magic 2 2>/dev/null | grep "syncProgress" | awk -F'"' '{print $4}'
+  $CARDANO_CLI query tip $NETWORK 2>/dev/null | grep "syncProgress" | awk -F'"' '{print $4}'
 }
 
 # Function to start the node

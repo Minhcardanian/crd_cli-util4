@@ -1,4 +1,5 @@
 #!/bin/bash
+source "$(dirname "$0")/config.sh"
 
 SELECT_UTXO="./select-utxo.sh"
 FILE_UTILS="./file_utils.sh"
@@ -15,10 +16,10 @@ unlock_asset() {
     script_plutus=$selected_file
 
     # Build address with Plutus script
-    if cardano-cli address build \
+    if $CARDANO_CLI address build \
         --payment-script-file "$script_plutus" \
         --out-file script.addr \
-        --testnet-magic 2; then
+        $NETWORK; then
         echo "Smart contract address created: script.addr"
     else
         echo "Error building smart contract address."
@@ -58,10 +59,10 @@ unlock_asset() {
 
     # Step 1: Build the transaction
     echo "Building unlock transaction..."
-    if cardano-cli conway transaction build \
+    if $CARDANO_CLI conway transaction build \
         --tx-in "$tx_in" \
         --tx-in-collateral "$tx_collateral" \
-        --testnet-magic 2 \
+        $NETWORK \
         --tx-in-script-file "$script_plutus" \
         --tx-in-inline-datum-present \
         --tx-in-redeemer-file "$redeemer_file" \
@@ -75,7 +76,7 @@ unlock_asset() {
 
     # Step 2: Sign the transaction
     echo "Signing the transaction..."
-    if cardano-cli conway transaction sign \
+    if $CARDANO_CLI conway transaction sign \
         --tx-file unlock.tx \
         --signing-key-file payment.skey \
         --out-file unlock.tx.signed; then
@@ -87,8 +88,8 @@ unlock_asset() {
 
     # Step 3: Submit the transaction
     echo "Submitting the transaction..."
-    if cardano-cli conway transaction submit \
-        --testnet-magic 2 \
+    if $CARDANO_CLI conway transaction submit \
+        $NETWORK \
         --tx-file unlock.tx.signed; then
         echo "Transaction submitted successfully."
     else
@@ -98,7 +99,7 @@ unlock_asset() {
 
     # Step 4: Check the txid of the transaction
     echo "Checking the txid..."
-    txid=$(cardano-cli conway transaction txid --tx-file unlock.tx.signed)
+    txid=$($CARDANO_CLI conway transaction txid --tx-file unlock.tx.signed)
     if [[ -n "$txid" ]]; then
         echo "Transaction hash (TXID): $txid"
     else
