@@ -1,7 +1,5 @@
 #!/bin/bash
-<<<<<<< HEAD
 source "$(dirname "$0")/config.sh"
-=======
 set -euo pipefail
 
 SCRIPT_DIR="$(dirname "$0")"
@@ -15,7 +13,6 @@ fi
 
 source "$CONFIG_FILE"
 source "$LIB_FILE"
->>>>>>> feature/config-centralization
 
 FILE_UTILS="./file_utils.sh"
 
@@ -61,7 +58,6 @@ lock_asset() {
     datum_file="$selected_file"
 
     echo ">> Building smart contract address..."
-<<<<<<< HEAD
     $CARDANO_CLI address build \
         --payment-script-file "$script_plutus" \
         --out-file script.addr \
@@ -89,7 +85,6 @@ lock_asset() {
     $CARDANO_CLI conway transaction submit \
         $NETWORK \
         --tx-file lock.tx.signed
-=======
     run_plutus_script "$script_plutus" script.addr
     check_command $? "Failed to build smart contract address."
 
@@ -109,7 +104,6 @@ lock_asset() {
 
     echo ">> Submitting transaction..."
     submit_tx --tx-file lock.tx.signed
->>>>>>> feature/config-centralization
     check_command $? "Failed to submit transaction."
 
     txid=$($CARDANO_CLI conway transaction txid --tx-file lock.tx.signed)

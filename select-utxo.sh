@@ -11,7 +11,6 @@ if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
   exit 1
 fi
 
-<<<<<<< HEAD
     if [[ "$input_type" == "payment" ]]; then
         # Query UTXO from the payment address
         $CARDANO_CLI conway query utxo \
@@ -57,9 +56,7 @@ fi
 
 # To select a script UTXO:
 # select_utxo "script"
-=======
 source "$CONFIG_FILE"
 source "$LIB_FILE"
 
 select_utxo "$@"
->>>>>>> feature/config-centralization

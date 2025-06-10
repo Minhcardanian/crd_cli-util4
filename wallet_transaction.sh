@@ -44,7 +44,6 @@ perform_transaction() {
     read -p "Enter the amount (tx-amount): " tx_amount
     read -p "Enter the recipient address (tx-out): " tx_out
 
-<<<<<<< HEAD
     # Build the transaction
     echo "Building the transaction..."
     if $CARDANO_CLI conway transaction build \
@@ -82,7 +81,6 @@ perform_transaction() {
         echo "Error submitting the transaction."
         exit 1
     fi
-=======
     build_tx --tx-in "$tx_in" \
              --tx-out "$tx_out+$tx_amount" \
              --change-address "$(cat payment.addr)" \
@@ -93,20 +91,16 @@ perform_transaction() {
             --out-file simple-tx.signed || return 1
 
     submit_tx --tx-file simple-tx.signed >/dev/null 2>&1 || return 1
->>>>>>> feature/config-centralization
 
     echo "Retrieving transaction ID..."
-<<<<<<< HEAD
     if txid=$($CARDANO_CLI conway transaction txid --tx-file simple-tx.signed); then
         echo "Transaction ID (txid): $txid"
     else
         echo "Error retrieving transaction ID."
         exit 1
     fi
-=======
     txid=$($CARDANO_CLI conway transaction txid --tx-file simple-tx.signed)
     [[ -n "$txid" ]] && echo "Transaction ID (txid): $txid"
->>>>>>> feature/config-centralization
 }
 
 # Main function
