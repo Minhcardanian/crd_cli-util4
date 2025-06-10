@@ -184,7 +184,7 @@ The main menu offers options to generate keys, build a transaction, sign it, sub
 2. **Modularity:** Single `config.sh` + `lib.sh` for reusable code; `menu.sh` for UI.
 3. **Offline/Online Separation:** UI can warn or disable options based on node connectivity.
 
-## Tasks to Complete for Production
+## Tasks to Complete 
 
 | Task                                              | Subtasks                                                                                                                                                                                                                    | Status |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----: |
