@@ -2,6 +2,7 @@
 source "$(dirname "$0")/config.sh"
 set -euo pipefail
 
+
 SCRIPT_DIR="$(dirname "$0")"
 CONFIG_FILE="$SCRIPT_DIR/config.sh"
 LIB_FILE="$SCRIPT_DIR/lib.sh"

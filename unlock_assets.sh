@@ -1,9 +1,6 @@
 #!/bin/bash
-<<<<<<< HEAD
 source "$(dirname "$0")/config.sh"
-=======
 set -euo pipefail
->>>>>>> feature/config-centralization
 
 SCRIPT_DIR="$(dirname "$0")"
 CONFIG_FILE="$SCRIPT_DIR/config.sh"
@@ -35,14 +32,11 @@ unlock_asset() {
     script_plutus=$selected_file
 
     # Build address with Plutus script
-<<<<<<< HEAD
     if $CARDANO_CLI address build \
         --payment-script-file "$script_plutus" \
         --out-file script.addr \
         $NETWORK; then
-=======
     if run_plutus_script "$script_plutus" script.addr; then
->>>>>>> feature/config-centralization
         echo "Smart contract address created: script.addr"
     else
         echo "Error building smart contract address."
@@ -82,7 +76,6 @@ unlock_asset() {
 
     # Step 1: Build the transaction
     echo "Building unlock transaction..."
-<<<<<<< HEAD
     if $CARDANO_CLI conway transaction build \
         --tx-in "$tx_in" \
         --tx-in-collateral "$tx_collateral" \
@@ -92,7 +85,6 @@ unlock_asset() {
         --tx-in-redeemer-file "$redeemer_file" \
         --change-address $(< payment.addr) \
         --out-file unlock.tx; then
-=======
     if build_tx --tx-in "$tx_in" \
                 --tx-in-collateral "$tx_collateral" \
                 --tx-in-script-file "$script_plutus" \
@@ -100,7 +92,6 @@ unlock_asset() {
                 --tx-in-redeemer-file "$redeemer_file" \
                 --change-address "$(< payment.addr)" \
                 --out-file unlock.tx; then
->>>>>>> feature/config-centralization
         echo "Transaction built successfully."
     else
         echo "Error building the transaction."
@@ -109,16 +100,13 @@ unlock_asset() {
 
     # Step 2: Sign the transaction
     echo "Signing the transaction..."
-<<<<<<< HEAD
     if $CARDANO_CLI conway transaction sign \
         --tx-file unlock.tx \
         --signing-key-file payment.skey \
         --out-file unlock.tx.signed; then
-=======
     if sign_tx --tx-body-file unlock.tx \
               --signing-key-file payment.skey \
               --out-file unlock.tx.signed; then
->>>>>>> feature/config-centralization
         echo "Transaction signed successfully."
     else
         echo "Error signing the transaction."
@@ -127,13 +115,10 @@ unlock_asset() {
 
     # Step 3: Submit the transaction
     echo "Submitting the transaction..."
-<<<<<<< HEAD
     if $CARDANO_CLI conway transaction submit \
         $NETWORK \
         --tx-file unlock.tx.signed; then
-=======
     if submit_tx --tx-file unlock.tx.signed; then
->>>>>>> feature/config-centralization
         echo "Transaction submitted successfully."
     else
         echo "Error submitting the transaction."

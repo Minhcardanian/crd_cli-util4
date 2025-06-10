@@ -1,96 +1,127 @@
-#!/bin/bash
-source "$(dirname "$0")/config.sh"
+#!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(dirname "$0")"
+# ─── Setup & Config Loading ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config.sh"
 LIB_FILE="$SCRIPT_DIR/lib.sh"
+WRAPPER="${PREVIEW_NODE_SCRIPT:-"$HOME/preview-node.sh"}"
+LOG_FILE="$SCRIPT_DIR/node.log"
 
-if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
-  echo "Required config.sh or lib.sh not found" >&2
+# sanity checks
+[[ -f "$CONFIG_FILE" && -f "$LIB_FILE" ]] || {
+  echo "Error: config.sh or lib.sh missing in $SCRIPT_DIR" >&2
   exit 1
-fi
+}
+[[ -x "$WRAPPER" ]] || {
+  echo "Error: preview-node.sh not found or not executable at $WRAPPER" >&2
+  exit 1
+}
 
 source "$CONFIG_FILE"
 source "$LIB_FILE"
+: "${CONFIG:=$SCRIPT_DIR/configuration/testnet-config.json}"
 
-# Set environment variable
-export CARDANO_NODE_SOCKET_PATH="$SOCKET_PATH"
-
-# Function to check if the node is running
-is_node_running() {
-  pgrep -f "cardano-node.*--database-path $DB_PATH" > /dev/null
-  echo $?
+# ─── Helpers ───────────────────────────────────────────────────────────────────
+is_wrapper_running() {
+  pgrep -f "$WRAPPER.*run" >/dev/null
 }
 
-# Function to check synchronization status
-check_sync_status() {
-  $CARDANO_CLI query tip $NETWORK 2>/dev/null | grep "syncProgress" | awk -F'"' '{print $4}'
+get_tip() {
+  local json block pct
+  json="$(
+    $CARDANO_CLI query tip \
+      --socket-path "$CARDANO_NODE_SOCKET_PATH" \
+      $NETWORK 2>/dev/null
+  )" || return 1
+  block=$(grep -oP '"block":\s*\K[0-9]+' <<<"$json")
+  pct=$(grep -oP '"syncProgress":\s*"\K[0-9.]+' <<<"$json")
+  printf "%s|%s\n" "${block:-?}" "${pct:-0}"
 }
 
-# Function to start the node
+kill_node_processes() {
+  [[ -n "${PREVIEW_PID-}" ]] && kill "$PREVIEW_PID" 2>/dev/null || :
+  pkill -P "$PREVIEW_PID" 2>/dev/null || :
+}
+
+# ─── Control functions ─────────────────────────────────────────────────────────
 start_node() {
-  nohup "$CARDANO_NODE_PATH/bin/cardano-node" run \
-    --topology "$TOPOLOGY" \
-    --database-path "$DB_PATH" \
-    --socket-path "$SOCKET_PATH" \
-    --host-addr "$HOST_ADDR" \
-    --port "$PORT" \
-    --config "$CONFIG" > /dev/null 2>&1 &
+  echo "Starting preview-node.sh (logging to $LOG_FILE)…"
+  bash "$WRAPPER" run > "$LOG_FILE" 2>&1 &
+  PREVIEW_PID=$!
+  sleep 1
+  echo "Launched PID $PREVIEW_PID."
 }
 
-# Function to stop the node
 stop_node() {
-  pkill -f "cardano-node.*--database-path $DB_PATH"
-  echo "Node has been stopped."
+  echo -e "\nStopping node (PID $PREVIEW_PID)…"
+  kill_node_processes
+  wait "$PREVIEW_PID" 2>/dev/null || :
+  echo "Node and wrapper stopped. Removing log."
+  rm -f "$LOG_FILE"
 }
 
-# Check if the node is running
-if [[ $(is_node_running) -ne 0 ]]; then
-  echo "The node is not running. Do you want to start the node? (y/n)"
-  read -r choice
-  if [[ "$choice" == "y" ]]; then
+# ─── Stale-process purge ────────────────────────────────────────────────────────
+if is_wrapper_running; then
+  PREVIEW_PID=$(pgrep -f "$WRAPPER.*run")
+  echo "preview-node.sh already running (PID $PREVIEW_PID)."
+  read -rp "Kill stale preview-node.sh and start fresh? (y/n) " killit
+  if [[ "$killit" =~ ^[Yy]$ ]]; then
+    stop_node
+    unset PREVIEW_PID
+  else
+    echo "Reusing existing node (PID $PREVIEW_PID)."
+  fi
+fi
+
+# ─── Interactive flow ──────────────────────────────────────────────────────────
+if ! is_wrapper_running; then
+  read -rp "Node is not running. Start it now? (y/n) " choice
+  if [[ "$choice" =~ ^[Yy]$ ]]; then
     start_node
   else
-    echo "Exiting without starting the node."
+    echo "Aborted."
     exit 0
   fi
 else
-  echo "The node is already running."
+  # ensure PREVIEW_PID is set if reused
+  PREVIEW_PID=${PREVIEW_PID:-$(pgrep -f "$WRAPPER.*run")}
 fi
 
-# Initialize previous sync status to track changes
-previous_sync_status=""
-
-# Loop to check synchronization status only if the node is running
-while [[ $(is_node_running) -eq 0 ]]; do
-  sync_status=$(check_sync_status)
-  if [[ -z "$sync_status" ]]; then
-    echo "The node is starting...."
-    echo "Press 's' to stop the node or 'ESC' to return to main menu."
-  else
-    if [[ "$sync_status" != "$previous_sync_status" ]]; then
-      echo "Synchronization status: $sync_status%"
-      echo "Press 's' to stop the node or 'ESC' to return to main menu."
-      previous_sync_status="$sync_status"
-      if [[ "$sync_status" == "100.00" ]]; then
-        echo "The node is fully synchronized."
-      fi
-    fi
-  fi
-
-  # Read user input
-  read -n 1 -t 2 user_input
-  case "$user_input" in
-    s)
-      stop_node
-      exit 0
-      ;;
-    $'\e')
-      echo "Returning to main menu..."
-      exit 0
-      ;;
-  esac
+# ─── Wait for wrapper to appear ────────────────────────────────────────────────
+while ! is_wrapper_running; do
+  printf "Waiting for preview-node.sh…  \r"
+  sleep 1
 done
 
-echo "The node is no longer running. Exiting!"
+echo "Node detected. Press 's' to stop or ESC to exit."
+
+# ─── Monitor loop with numeric status ──────────────────────────────────────────
+while is_wrapper_running; do
+  blk="---"; pct="0.00"
+  if tip_info=$(get_tip); then
+    IFS='|' read -r blk pct <<<"$tip_info"
+  fi
+  printf "\rBlock: %6s | Sync: %6s%%" "$blk" "$pct"
+
+  if (( ${pct%%.*} >= 100 )); then
+    echo -e "\n\033[1;32mNode fully synchronized at block $blk.\033[0m"
+    break
+  fi
+
+  if IFS= read -rsn1 -t 1 key; then
+    case "$key" in
+      s) stop_node; exit 0 ;;
+      $'\e') echo -e "\nReturning to menu…"; exit 0 ;;
+    esac
+  fi
+done
+
+# ─── Post-sync prompt ──────────────────────────────────────────────────────────
+while true; do
+  read -rp "Press 's' to stop node or ESC to return: " -n1 key
+  case "$key" in
+    s) stop_node; exit 0 ;;
+    $'\e') echo ""; echo "Returning to menu…"; exit 0 ;;
+  esac
+done
