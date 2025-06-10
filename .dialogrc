@@ -1,0 +1,8 @@
+# ~/.dialogrc for crd_cli-util4
+# Remove shadows, use a flat white-on-black style with cyan titles
+shadow = off
+widget_color = white,black
+title_color = cyan,black
+border_color = white,black
+# Enable ANSI color tags in dialog text
+colors = on

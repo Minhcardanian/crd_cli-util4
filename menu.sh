@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Simple whiptail-based UI wrapper
+# Simple dialog-based UI wrapper
+export DIALOGRC="$(pwd)/.dialogrc"
 SCRIPT_DIR="$(dirname "$0")"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/lib.sh"
@@ -22,38 +23,39 @@ plutus_menu() {
     whiptail --msgbox "Plutus utilities (placeholder)" 8 40
 }
 
-while true; do
-    CHOICE=$(whiptail --backtitle "crd_cli-util4" --title "Main Menu" \
-        --menu "Select action:" 15 60 6 \
-        1 "Generate Keys" \
-        2 "Build Transaction" \
-        3 "Sign Transaction" \
-        4 "Submit Transaction" \
-        5 "Plutus Utilities" \
-        6 "Exit" 3>&1 1>&2 2>&3)
-    [ $? -ne 0 ] && break
-    clear
-    case "$CHOICE" in
-        1)
-            NAME=$(whiptail --inputbox "Wallet name:" 8 40 3>&1 1>&2 2>&3)
-            [ -n "$NAME" ] && generate_keys "$NAME"
-            ;;
-        2)
-            build_tx_flow
-            ;;
-        3)
-            sign_tx_flow
-            ;;
-        4)
-            submit_tx_flow
-            ;;
-        5)
-            plutus_menu
-            ;;
-        6)
-            break
-            ;;
-    esac
-    read -p "Press ENTER to continue..."
-    clear
-done
+# ────────────────────────────────────────────────────────────────────
+# BEGIN dialog-based menu
+CHOICE_TMP="$(mktemp)"
+dialog \
+  --clear \
+  --backtitle "" \
+  --title "crd_cli-util4" \
+  --no-shadow \
+  --colors \
+  --menu "\Z1Select action:\Zn" 10 50 6 \
+    1 "Generate Keys" \
+    2 "Check UTxO" \
+    3 "Send ADA" \
+    4 "Delegate Stake" \
+    5 "Register/Update DRep" \
+    6 "Lock Assets" \
+    7 "Unlock Assets" \
+    8 "Exit" \
+  2> "$CHOICE_TMP"
+
+choice=$(<"$CHOICE_TMP")
+rm "$CHOICE_TMP"
+# END dialog-based menu
+# ────────────────────────────────────────────────────────────────────
+
+case $choice in
+  1) generate_keys ;;
+  2) check_utxo    ;;
+  3) send_ada      ;;
+  4) delegate_stake;;
+  5) register_drep ;;
+  6) lock_assets   ;;
+  7) unlock_assets ;;
+  8) exit 0        ;;
+  *) echo "Invalid choice" >&2; exit 1 ;;
+esac
