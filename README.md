@@ -43,13 +43,32 @@ Lightweight shell scripts to simplify common `cardano-cli` workflows: key genera
    ```
 3. **Unix Tools:** `jq` for JSON parsing; `whiptail` (normally preinstalled on Debian/Ubuntu) for the UI.
 
+
+## Environment Configuration
+
+### WSL Ubuntu 24.04.1 LTS
+Install WSL and the Ubuntu 24.04 distribution:
+```bash
+wsl --install -d Ubuntu-24.04
+```
+Inside the WSL shell install cardano-cli and other prerequisites before cloning this repository.
+
+### Docker
+A basic `Dockerfile` is provided. Build and launch an interactive container:
+```bash
+docker build -t cardano-cli-util .
+docker run -it -v $(pwd):/app cardano-cli-util
+```
 ## Installation
 
 ```bash
 git clone https://github.com/Minhcardanian/crd_cli-util4.git
 cd crd_cli-util4
-chmod +x scripts/*.sh lib.sh menu.sh
+chmod +x *.sh
 cardano-cli query protocol-parameters --testnet-magic 1097911063 --out-file protocol.json
+
+# Start the menu
+./main.sh
 ```
 
 Edit `config.sh` as needed:
@@ -172,7 +191,7 @@ The main menu offers options to generate keys, build a transaction, sign it, sub
 | **Centralize Configuration**                      | - Extract network, file-path, and protocol settings into `config.sh`  <br> - Update all scripts and the UI to source `config.sh`                                                                                            |  Done  |
 | **Refactor Core Logic into `lib.sh`**             | - Encapsulate UTxO selection, fee calculation, transaction building, signing, submission, and Plutus helpers  <br> - Have both CLI scripts and the UI source these functions for consistency                                |  Done  |
 | **Implement Terminal UI Skeleton**                | - Define architecture of `menu.sh`, `config.sh`, and `lib.sh`  <br> - Map the user flow for each operation  <br> - Identify optimizations: input validation, progress bars, caching                                         |  Done  |
-| **Populate `examples/` Directory**                | - Provide end-to-end example scripts for common flows (send ADA, mint token, spend script)  <br> - Document preconditions, outputs, and verification steps                                                                  |  \[ ]  |
+| **Populate `examples/` Directory**                | - Provide end-to-end example scripts for common flows (send ADA, mint token, spend script)  <br> - Document preconditions, outputs, and verification steps                                                                  |   Done  |
 | **Add Multi-Asset & Advanced Plutus Support**     | - Extend fee-calculation and UTxO parsing for native tokens  <br> - Introduce flags and helpers for inline datums and reference inputs  <br> - Update the UI to let users select token bundles and script options           |  \[ ]  |
 | **Integrate Hardware-Wallet & Key-Vault Options** | - Add a hardware-wallet signing flow with `cardano-hw-cli`  <br> - Offer encrypted-vault signing using GPG for private keys                                                                                                 |  \[ ]  |
 | **Automated Testing & CI Pipeline**               | - Write shell/unit tests for each `lib.sh` function  <br> - Implement a GitHub Actions workflow that spins up a sandbox node and runs example flows to verify on-chain effects                                              |  \[ ]  |
