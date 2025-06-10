@@ -143,6 +143,22 @@ clear
 * **Flow functions** (`build_tx_flow`, etc.) prompt via `whiptail` then call corresponding `lib.sh` functions.
 * Place full UI demos in `examples/` so users can see complete scripts without altering core logic.
 
+### Architecture
+
+1. **config.sh** – centralizes network, protocol, and path variables so all scripts share the same settings.
+2. **lib.sh** – exposes reusable helpers such as `generate_keys`, `build_tx`, and `submit_tx` that wrap `cardano-cli` calls.
+3. **menu.sh** – provides the whiptail driven interface and orchestrates user flows by calling functions in `lib.sh`.
+
+### User Flow
+
+The main menu offers options to generate keys, build a transaction, sign it, submit it, or access Plutus utilities. Each choice launches a dedicated flow function that collects inputs via whiptail dialogs and then invokes the relevant `lib.sh` helper.
+
+### Optimizations
+
+* Validate all user inputs and loop until values are provided.
+* Show progress using `whiptail --gauge` for long-running CLI calls.
+* Cache frequently queried data like UTxO sets to speed up repeated operations.
+
 ## Design Philosophy
 
 1. **Transparency & Learning:** Plain shell + whiptail menus expose every step of the CLI workflow.
@@ -155,7 +171,7 @@ clear
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----: |
 | **Centralize Configuration**                      | - Extract network, file-path, and protocol settings into `config.sh`  <br> - Update all scripts and the UI to source `config.sh`                                                                                            |  Done  |
 | **Refactor Core Logic into `lib.sh`**             | - Encapsulate UTxO selection, fee calculation, transaction building, signing, submission, and Plutus helpers  <br> - Have both CLI scripts and the UI source these functions for consistency                                |  Done  |
-| **Implement Terminal UI Skeleton**                | - Define architecture of `menu.sh`, `config.sh`, and `lib.sh`  <br> - Map the user flow for each operation  <br> - Identify optimizations: input validation, progress bars, caching                                         |  \[ ]  |
+| **Implement Terminal UI Skeleton**                | - Define architecture of `menu.sh`, `config.sh`, and `lib.sh`  <br> - Map the user flow for each operation  <br> - Identify optimizations: input validation, progress bars, caching                                         |  Done  |
 | **Populate `examples/` Directory**                | - Provide end-to-end example scripts for common flows (send ADA, mint token, spend script)  <br> - Document preconditions, outputs, and verification steps                                                                  |  \[ ]  |
 | **Add Multi-Asset & Advanced Plutus Support**     | - Extend fee-calculation and UTxO parsing for native tokens  <br> - Introduce flags and helpers for inline datums and reference inputs  <br> - Update the UI to let users select token bundles and script options           |  \[ ]  |
 | **Integrate Hardware-Wallet & Key-Vault Options** | - Add a hardware-wallet signing flow with `cardano-hw-cli`  <br> - Offer encrypted-vault signing using GPG for private keys                                                                                                 |  \[ ]  |
