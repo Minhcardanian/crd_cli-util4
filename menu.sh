@@ -1,59 +1,101 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ─── Base directory & theming ──────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-RC="$SCRIPT_DIR/.dialogrc"
-if [[ -f "$RC" ]]; then
-  export DIALOGRC="$RC"
-else
-  unset DIALOGRC
-  echo "[WARN] $RC not found; using default dialog theme" >&2
+SCRIPT_DIR="$(dirname "$0")"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
+LIB_FILE="$SCRIPT_DIR/lib.sh"
+FILE_UTILS="$SCRIPT_DIR/file_utils.sh"
+
+# ensure required files exist
+for f in "$CONFIG_FILE" "$LIB_FILE" "$FILE_UTILS"; do
+  [[ -f "$f" ]] || { echo "Required $f not found" >&2; exit 1; }
+  source "$f"
+done
+
+PAYMENT_ADDR_FILE="payment.addr"
+SIGNING_KEY_FILE="payment.skey"
+
+# abort-on-failure helper
+check_command() {
+    if [[ $1 -ne 0 ]]; then
+        echo "Error: $2" >&2
+        exit 1
+    fi
+}
+
+# wrappers
+generate_keys()       { bash "$SCRIPT_DIR/wallet-generate.sh"; }
+start_node()          { bash "$SCRIPT_DIR/run-node.sh";      }
+query_utxo()          { bash "$SCRIPT_DIR/check.sh" utxo;     }
+check_tx()            { bash "$SCRIPT_DIR/check.sh" txhash;   }
+perform_transaction() { bash "$SCRIPT_DIR/wallet-transaction.sh"; }
+delegate_stake()      { bash "$SCRIPT_DIR/delegate.sh";       }
+lock_asset()          { bash "$SCRIPT_DIR/lock_assets.sh";     }
+unlock_asset()        { bash "$SCRIPT_DIR/unlock-asset.sh";    }
+governance()          { bash "$SCRIPT_DIR/drep.sh" register;  }
+
+# ─── Pre-flight ───────────────────────────────────────────────────────────────
+if [[ ! -f "$PAYMENT_ADDR_FILE" || ! -f "$SIGNING_KEY_FILE" ]]; then
+  dialog --msgbox "⚠️  No wallet found.\nPlease select 'Generate keys & address'." 7 50
+  clear; generate_keys
 fi
 
-# ─── Load configuration & shared functions ────────────────────────────────────
-source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/lib.sh"
+UTXO_JSON=$($CARDANO_CLI conway query utxo \
+  --address "$( < "$PAYMENT_ADDR_FILE" )" $NETWORK \
+  --out-file /dev/stdout 2>/dev/null)
 
-# ─── UI wrapper functions ─────────────────────────────────────────────────────
-generate_keys()   { bash "$SCRIPT_DIR/wallet-generate.sh"; }
-check_utxo()      { bash "$SCRIPT_DIR/check.sh"; }
-send_ada()        { bash "$SCRIPT_DIR/wallet_transaction.sh"; }
-delegate_stake()  { bash "$SCRIPT_DIR/delegate_to_drep.sh"; }
-register_drep()   { bash "$SCRIPT_DIR/drep.sh"; }
-lock_assets()     { bash "$SCRIPT_DIR/lock_assets.sh"; }
-unlock_assets()   { bash "$SCRIPT_DIR/unlock_assets.sh"; }
+if ! echo "$UTXO_JSON" | jq -e 'length > 0' >/dev/null 2>&1; then
+  dialog --msgbox "⚠️  No UTxO at payment address.\nPlease fund it or run 'Query UTxO'." 7 50
+fi
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ─── Dialog-based menu ────────────────────────────────────────────────────────
-CHOICE_TMP="$(mktemp)"
-dialog \
-  --clear \
-  --backtitle "" \
-  --title "crd_cli-util4" \
-  --no-shadow \
-  --colors \
-  --menu "\Z1Select action:\Zn" 12 60 8 \
-    1 "Generate Keys" \
-    2 "Check UTxO" \
-    3 "Send ADA" \
-    4 "Delegate Stake" \
-    5 "Register/Update DRep" \
-    6 "Lock Assets" \
-    7 "Unlock Assets" \
-    8 "Exit" \
-  2> "$CHOICE_TMP"
+main_menu() {
+  local CHOICE_FILE
+  CHOICE_FILE=$(mktemp)
+  trap 'rm -f "$CHOICE_FILE"' EXIT
 
-choice="$(<"$CHOICE_TMP")"
-rm -f "$CHOICE_TMP"
+  while true; do
+    dialog \
+      --clear \
+      --backtitle "Cardano CLI Utility" \
+      --title "Main Menu" \
+      --menu "Select an action:" 15 50 10 \
+      1 "Generate keys & address"               \
+      2 "Start/Stop node"                       \
+      3 "Query UTxO"                            \
+      4 "Check TX Hash"                         \
+      5 "Perform a simple transaction"          \
+      6 "Delegate stake"                        \
+      7 "Lock asset to smart contract"          \
+      8 "Unlock asset from smart contract"      \
+      9 "Governance (dRep + vote)"              \
+      10 "Exit"                                 \
+      2>"$CHOICE_FILE"
 
-case $choice in
-  1) generate_keys   ;;
-  2) check_utxo      ;;
-  3) send_ada        ;;
-  4) delegate_stake  ;;
-  5) register_drep   ;;
-  6) lock_assets     ;;
-  7) unlock_assets   ;;
-  8) exit 0          ;;
-  *) dialog --msgbox "Invalid choice" 6 40 ;;
-esac
+    local ret=$?
+    local choice
+    choice=$(<"$CHOICE_FILE")
+
+    # Cancel/Esc → exit clean
+    [[ $ret -ne 0 ]] && { clear; exit 0; }
+
+    clear
+    case "$choice" in
+      1) generate_keys            ;;
+      2) start_node               ;;
+      3) query_utxo               ;;
+      4) check_tx                 ;;
+      5) perform_transaction      ;;
+      6) delegate_stake           ;;
+      7) lock_asset               ;;
+      8) unlock_asset             ;;
+      9) governance               ;;
+      10) exit 0                  ;;
+      *) dialog --msgbox "Invalid choice." 5 30 ;;
+    esac
+
+    read -rp "Press Enter to return to menu…" _
+  done
+}
+
+main_menu

@@ -1,103 +1,99 @@
-#!/bin/bash
-source "$(dirname "$0")/config.sh"
+#!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(dirname "$0")"
-CONFIG_FILE="$SCRIPT_DIR/config.sh"
-LIB_FILE="$SCRIPT_DIR/lib.sh"
+# ─── Setup ─────────────────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG="$SCRIPT_DIR/config.sh"
+LIB="$SCRIPT_DIR/lib.sh"
 
-if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
-  echo "Required config.sh or lib.sh not found" >&2
-  exit 1
-fi
+for f in "$CONFIG" "$LIB"; do
+  [[ -f "$f" ]] || { echo "Required file not found: $f" >&2; exit 1; }
+  source "$f"
+done
 
-source "$CONFIG_FILE"
-source "$LIB_FILE"
+# ─── Helpers ───────────────────────────────────────────────────────────────────
+check_command() {
+    if [[ $1 -ne 0 ]]; then
+        echo "Error: $2" >&2
+        exit 1
+    fi
+}
 
-# Ask for user input to select an option
-clear
+# ─── Prompt user for delegation choice ─────────────────────────────────────────
 echo "Select a vote delegation option:"
-echo "1. Always Abstain"
-echo "2. No Confidence"
-echo "3. Delegate to DRep"
-echo "4. Exit"
+echo "  1) Always Abstain"
+echo "  2) No Confidence"
+echo "  3) Delegate to specific DRep"
+read -rp "Enter choice (1/2/3): " choice
 
-read -p "Enter your choice (1/2/3): " choice
-
-# Ask for the DRep ID if needed
-if [[ "$choice" == "3" ]]; then
-  read -p "Enter the DRep ID: " drep_id
-fi
-
-# Execute the corresponding $CARDANO_CLI command based on the user's choice
-case $choice in
-  1) 
-    echo "Delegating vote with Always Abstain..."
-    $CARDANO_CLI conway stake-address vote-delegation-certificate \
-      --stake-verification-key-file stake.vkey \
-      --always-abstain \
-      --out-file vote-deleg.cert
-    ;;
-  2) 
-    echo "Delegating vote with No Confidence..."
-    $CARDANO_CLI conway stake-address vote-delegation-certificate \
-      --stake-verification-key-file stake.vkey \
-      --always-no-confidence \
-      --out-file vote-deleg.cert
-    ;;
-  3) 
-    echo "Delegating vote to DRep with ID: $drep_id..."
-    $CARDANO_CLI conway stake-address vote-delegation-certificate \
-      --stake-verification-key-file stake.vkey \
-      --drep-key-hash "$drep_id" \
-      --out-file vote-deleg.cert
-    ;;
-
-  4)
-    echo "Exiting the program..." 
-    exit 0
-    ;;
-  *)
-    echo "Invalid choice. Please select 1, 2, or 3."
-    exit 1
-    ;;
+case "$choice" in
+    1)
+        cert_flags=(--always-abstain)
+        ;;
+    2)
+        cert_flags=(--always-no-confidence)
+        ;;
+    3)
+        read -rp "Enter the DRep key hash: " drep_id
+        cert_flags=(--drep-key-hash "$drep_id")
+        ;;
+    *)
+        echo "Invalid choice." >&2
+        exit 1
+        ;;
 esac
 
-# Perform the transaction
-echo "Building transaction..."
-$CARDANO_CLI conway transaction build \
-<<<<<<< HEAD
-  --tx-in $($CARDANO_CLI query utxo --address $(< payment.addr) $NETWORK --out-file /dev/stdout | jq -r 'keys[0]') \
-  --change-address $(< payment.addr) \
-=======
-  --tx-in "$($CARDANO_CLI query utxo --address "$(< payment.addr)" $NETWORK --out-file /dev/stdout | jq -r 'keys[0]')" \
-  --change-address "$(< payment.addr)" \
->>>>>>> feature/config-centralization
-  --certificate-file vote-deleg.cert \
-  --witness-override 2 \
-  --out-file tx.raw \
-  $NETWORK
+# ─── Build vote delegation certificate ─────────────────────────────────────────
+cert_file="vote-deleg.cert"
+echo "Generating delegation certificate..."
+$CARDANO_CLI conway stake-address vote-delegation-certificate \
+    --stake-verification-key-file stake.vkey \
+    "${cert_flags[@]}" \
+    --out-file "$cert_file"
+check_command $? "Failed to create delegation certificate"
 
-echo "Signing transaction..."
-<<<<<<< HEAD
-$CARDANO_CLI conway transaction sign \
-  --tx-body-file tx.raw \
-  --signing-key-file payment.skey \
-  --signing-key-file stake.skey \
-  --out-file tx.signed
+# ─── Build the transaction ─────────────────────────────────────────────────────
+echo "Selecting UTxO for fee..."
+# pick the first UTxO from payment.addr
+tx_in=$(
+  $CARDANO_CLI conway query utxo \
+    --address "$(< payment.addr)" \
+    $NETWORK \
+    --out-file /dev/stdout \
+  | jq -r 'keys[0]'
+)
+if [[ -z "$tx_in" ]]; then
+    echo "No UTxO available to cover fees." >&2
+    exit 1
+fi
 
-echo "Submitting transaction..."
-$CARDANO_CLI conway transaction submit \
-  --tx-file tx.signed \
-  $NETWORK
-=======
-sign_tx --tx-body-file tx.raw \
-        --signing-key-file payment.skey \
-        --signing-key-file stake.skey \
-        --out-file tx.signed
+echo "Building delegation transaction..."
+build_tx \
+    --tx-in "$tx_in" \
+    --change-address "$(< payment.addr)" \
+    --certificate-file "$cert_file" \
+    --witness-override 2 \
+    --out-file deleg.tx
+check_command $? "Failed to build delegation transaction"
 
-echo "Submitting transaction..."
-submit_tx --tx-file tx.signed
->>>>>>> feature/config-centralization
+# ─── Sign the transaction ──────────────────────────────────────────────────────
+echo "Signing delegation transaction..."
+sign_tx \
+    --tx-body-file deleg.tx \
+    --signing-key-file payment.skey \
+    --signing-key-file stake.skey \
+    --out-file deleg.signed
+check_command $? "Failed to sign delegation transaction"
 
-echo "Vote delegation transaction completed."
+# ─── Submit and report ──────────────────────────────────────────────────────────
+echo "Submitting delegation transaction..."
+submit_tx --tx-file deleg.signed
+check_command $? "Failed to submit delegation transaction"
+
+txid=$($CARDANO_CLI conway transaction txid --tx-file deleg.signed)
+if [[ -n "$txid" ]]; then
+    echo "✅ Delegation transaction submitted. TXID: $txid"
+else
+    echo "Error retrieving TXID" >&2
+    exit 1
+fi

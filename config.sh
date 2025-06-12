@@ -13,20 +13,21 @@ export NETWORK="${NETWORK:---testnet-magic 2}"
 export PROTOCOL_PARAMS="${PROTOCOL_PARAMS:-$SCRIPT_DIR/protocol.json}"
 
 # ─── Auto-detect the node socket ────────────────────────────────────────────────
-# If the user has already overridden CARDANO_NODE_SOCKET_PATH, keep it.
-# Otherwise, search common preview node directories for the first "*.socket" you find.
 if [[ -z "${CARDANO_NODE_SOCKET_PATH:-}" ]]; then
-  # adjust /home/minhgiga/cardano if your preview-node.sh uses a different base
+  # adjust if your node lives elsewhere
   DEFAULT_SOCKET="$(find "$HOME/cardano" -type s -name "*.socket" 2>/dev/null | head -n1)"
   if [[ -n "$DEFAULT_SOCKET" ]]; then
     export CARDANO_NODE_SOCKET_PATH="$DEFAULT_SOCKET"
   else
-    # fallback to a local db folder
     export CARDANO_NODE_SOCKET_PATH="$SCRIPT_DIR/db/node.socket"
   fi
 fi
 
-# ─── Optional: node-run defaults (only if you use run-node.sh) ──────────────────
+# ─── Default wallet files ───────────────────────────────────────────────────────
+export PAYMENT_ADDR_FILE="${PAYMENT_ADDR_FILE:-$SCRIPT_DIR/payment.addr}"
+export SIGNING_KEY_FILE="${SIGNING_KEY_FILE:-$SCRIPT_DIR/payment.skey}"
+
+# ─── Optional: node-run defaults (only if you use run-node.sh) ─────────────────
 : "${DB_PATH:=$SCRIPT_DIR/db}"
 : "${CARDANO_NODE_PATH:=$SCRIPT_DIR/cardano-node}"
 : "${TOPOLOGY:=$SCRIPT_DIR/configuration/testnet-topology.json}"
@@ -34,7 +35,13 @@ fi
 : "${HOST_ADDR:=0.0.0.0}"
 : "${PORT:=3001}"
 
-# ─── Debug info (optional) ─────────────────────────────────────────────────────
-echo "Using CARDANO_CLI=$CARDANO_CLI"
-echo "Using SOCKET_PATH=$CARDANO_NODE_SOCKET_PATH"
-echo "Using NETWORK=$NETWORK"
+# ─── Debug info (only if DEBUG=true) ────────────────────────────────────────────
+if [[ "${DEBUG:-false}" == "true" ]]; then
+  echo "CARDANO_CLI         = $CARDANO_CLI"
+  echo "CARDANO_ADDRESS     = $CARDANO_ADDRESS"
+  echo "CARDANO_NODE_SOCKET = $CARDANO_NODE_SOCKET_PATH"
+  echo "NETWORK             = $NETWORK"
+  echo "PROTOCOL_PARAMS     = $PROTOCOL_PARAMS"
+  echo "PAYMENT_ADDR_FILE   = $PAYMENT_ADDR_FILE"
+  echo "SIGNING_KEY_FILE    = $SIGNING_KEY_FILE"
+fi

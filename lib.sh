@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# -----------------------------------------------------------------------------
+# Prevent unbound‐variable errors when a caller references CHOICE_FILE before
+# defining it.
+: "${CHOICE_FILE:=}"
+
+# Ensure core environment variables are defined (must come from config.sh)
+: "${CARDANO_CLI:?CARDANO_CLI must be set in config.sh}"
+: "${NETWORK:?NETWORK must be set in config.sh}"
+: "${PROTOCOL_PARAMS:?PROTOCOL_PARAMS must be set in config.sh}"
+
 # Library of helper functions for Cardano CLI workflows
 # Requires config.sh to be sourced before using these functions.
 
@@ -12,13 +22,13 @@ select_utxo() {
 
     if [[ "$input_type" == "payment" ]]; then
         $CARDANO_CLI conway query utxo \
-            --address "$(cat payment.addr)" \
+            --address "$(<payment.addr)" \
             $NETWORK \
             --output-json > "$utxo_file"
         echo "UTXO list from payment address:"
     elif [[ "$input_type" == "script" ]]; then
         $CARDANO_CLI conway query utxo \
-            --address "$(cat script.addr)" \
+            --address "$(<script.addr)" \
             $NETWORK \
             --output-json > "$utxo_file"
         echo "UTXO list from script address:"
@@ -34,7 +44,7 @@ select_utxo() {
 
     read -p "Enter the number corresponding to the UTXO you want to use: " selected_index
     SELECTED_UTXO=$(echo "$sorted_utxos" | sed -n "${selected_index}p" | awk '{print $1}')
-    if [[ -z "$SELECTED_UTXO" ]]; then
+    if [[ -z "${SELECTED_UTXO:-}" ]]; then
         echo "Invalid selection." >&2
         return 1
     fi
