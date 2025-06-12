@@ -1,347 +1,136 @@
-#!/bin/bash
-source "$(dirname "$0")/config.sh"
+#!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(dirname "$0")"
+# ─── Setup & Config Loading ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config.sh"
 LIB_FILE="$SCRIPT_DIR/lib.sh"
+WRAPPER="${PREVIEW_NODE_SCRIPT:-"$HOME/preview-node.sh"}"
+LOG_FILE="$SCRIPT_DIR/node.log"
 
-if [[ ! -f "$CONFIG_FILE" || ! -f "$LIB_FILE" ]]; then
-  echo "Required config.sh or lib.sh not found" >&2
+# sanity checks
+[[ -f "$CONFIG_FILE" && -f "$LIB_FILE" ]] || {
+  echo "Error: config.sh or lib.sh missing in $SCRIPT_DIR" >&2
   exit 1
-fi
+}
+[[ -x "$WRAPPER" ]] || {
+  echo "Error: preview-node.sh not found or not executable at $WRAPPER" >&2
+  exit 1
+}
 
 source "$CONFIG_FILE"
 source "$LIB_FILE"
+: "${CONFIG:=$SCRIPT_DIR/configuration/testnet-config.json}"
 
-# Paths to important files
-STAKE_VKEY="stake.vkey"
-STAKE_SKEY="stake.skey"
-PAYMENT_ADDR_FILE="payment.addr"
-STAKE_ADDR_FILE="stake.addr"
-PAYMENT_SKEY="payment.skey"
-PAYMENT_ADDR=$(<payment.addr)
-STAKE_ADDR=$(<stake.addr)
-DEGREG_CERT="dereg.cert"
+# ─── Helpers ───────────────────────────────────────────────────────────────────
+is_wrapper_running() {
+  pgrep -f "$WRAPPER.*run" >/dev/null
+}
 
-# External scripts
-SELECT_UTXO="$SCRIPT_DIR/select-utxo.sh"
-FILE_UTILS="$SCRIPT_DIR/file_utils.sh"
+get_tip() {
+  local json block pct
+  json="$(
+    $CARDANO_CLI query tip \
+      --socket-path "$CARDANO_NODE_SOCKET_PATH" \
+      $NETWORK 2>/dev/null
+  )" || return 1
+  block=$(grep -oP '"block":\s*\K[0-9]+' <<<"$json")
+  pct=$(grep -oP '"syncProgress":\s*"\K[0-9.]+' <<<"$json")
+  printf "%s|%s\n" "${block:-?}" "${pct:-0}"
+}
 
-STAKE_KEY_REGISTERED=$($CARDANO_CLI query stake-address-info --address "$(cat $STAKE_ADDR_FILE)" $NETWORK | jq -r '.[0].stakeDelegation')
+# ─── Kill everything: wrapper, child node, socket, and log ──────────────────────
+kill_node_processes() {
+  # kill the preview-node.sh wrapper
+  [[ -n "${PREVIEW_PID-}" ]] && kill "$PREVIEW_PID" 2>/dev/null || :
+  # kill any cardano-node processes started by it
+  pkill -f "cardano-node run" 2>/dev/null || :
+  # remove the socket and log
+  rm -f "$CARDANO_NODE_SOCKET_PATH" "$LOG_FILE"
+}
 
-# Check if required external files exist
-if [[ ! -f "$SELECT_UTXO" ]]; then
-  echo "select-utxo.sh not found in $SCRIPT_DIR" >&2
-  exit 1
+# ─── Trap Ctrl+C / SIGTERM to clean up ─────────────────────────────────────────
+trap 'echo; echo "Interrupted — stopping node…"; kill_node_processes; exit 1' INT TERM
+
+# ─── Start/stop wrappers ────────────────────────────────────────────────────────
+start_node() {
+  echo "Starting preview-node.sh (logging to $LOG_FILE)…"
+  bash "$WRAPPER" run > "$LOG_FILE" 2>&1 &
+  PREVIEW_PID=$!
+  sleep 1
+  echo "Launched PID $PREVIEW_PID."
+}
+
+stop_node() {
+  echo -e "\nStopping node (PID $PREVIEW_PID)…"
+  kill_node_processes
+  wait "$PREVIEW_PID" 2>/dev/null || :
+  echo "Node and wrapper stopped."
+}
+
+# ─── Purge any stale instance ──────────────────────────────────────────────────
+if is_wrapper_running; then
+  PREVIEW_PID=$(pgrep -f "$WRAPPER.*run")
+  echo "Found existing preview-node.sh (PID $PREVIEW_PID)."
+  read -rp "Kill it and start fresh? (y/n) " killit
+  if [[ "$killit" =~ ^[Yy]$ ]]; then
+    stop_node
+    unset PREVIEW_PID
+  else
+    echo "Reusing existing node (PID $PREVIEW_PID)."
+  fi
 fi
 
-if [[ ! -f "$FILE_UTILS" ]]; then
-  echo "file_utils.sh not found in $SCRIPT_DIR" >&2
-  exit 1
+# ─── Interactive start flow ───────────────────────────────────────────────────
+if ! is_wrapper_running; then
+  read -rp "Node is not running. Start it now? (y/n) " choice
+  if [[ "$choice" =~ ^[Yy]$ ]]; then
+    start_node
+  else
+    echo "Aborted."
+    exit 0
+  fi
+else
+  PREVIEW_PID=${PREVIEW_PID:-$(pgrep -f "$WRAPPER.*run")}
 fi
 
-source "$SELECT_UTXO"
-source "$FILE_UTILS"
+# ─── Wait for socket to appear ─────────────────────────────────────────────────
+while ! is_wrapper_running; do
+  printf "Waiting for preview-node.sh…  \r"
+  sleep 1
+done
 
-# Function to select UTXO
-select_valid_utxo() {
-  echo "Selecting UTXO..."
-  select_utxo "payment" # Assumes this is a function from select-utxo.sh
-  if [[ -z "$SELECTED_UTXO" ]]; then
-    echo "No UTXO selected. Please try again."
-    return 1
+echo "Node detected. Press 's' to stop or ESC to exit."
+
+# ─── Monitor loop with live Block & Sync display ─────────────────────────────
+while is_wrapper_running; do
+  # defaults if tip fails
+  blk="---"; pct="0.00"
+  if tip_info=$(get_tip); then
+    IFS='|' read -r blk pct <<<"$tip_info"
   fi
-  echo "Selected UTXO: $SELECTED_UTXO"
-  return 0
-}
+  printf "\rBlock: %6s | Sync: %6s%%" "$blk" "$pct"
 
-# Function to select Pool ID
-select_valid_poolid() {
-  echo "Selecting Pool ID..."
-  select_poolid # Assumes this is a function from file_utils.sh
-  if [[ -z "$POOL_ID" ]]; then
-    echo "No Pool ID selected. Please try again."
-    return 1
-  fi
-  echo "Selected Pool ID: $POOL_ID"
-  return 0
-}
-
-# Function to create stake certificates
-create_stake_certificates() {
-  local POOL_ID=$1
-  local STAKE_CERT="stake-registration.cert"
-  local DELEGATION_CERT="delegation.cert"
-
-  if [[ "$STAKE_KEY_REGISTERED" == "null" ]]; then
-    echo "Creating stake registration certificate..."
-    $CARDANO_CLI conway stake-address registration-certificate \
-      --stake-verification-key-file $STAKE_VKEY \
-      --key-reg-deposit-amt 2000000 \
-      --out-file $STAKE_CERT
-  else
-    echo "Stake key already registered. Skipping registration."
+  # once fully synced, announce and break
+  if (( ${pct%%.*} >= 100 )); then
+    echo -e "\n\033[1;32mNode fully synchronized at block $blk.\033[0m"
+    break
   fi
 
-  echo "Creating delegation certificate for pool $POOL_ID..."
-  $CARDANO_CLI conway stake-address stake-delegation-certificate \
-    --stake-verification-key-file $STAKE_VKEY \
-    --stake-pool-id $POOL_ID \
-    --out-file $DELEGATION_CERT
-}
-
-# Function to create undelegation certificate
-create_undelegation_certificate() {
-  echo "Creating undelegation certificate..."
-  $CARDANO_CLI conway stake-address deregistration-certificate \
-    --stake-verification-key-file "$STAKE_VKEY" \
-    --key-reg-deposit-amt 2000000 \
-    --out-file "$DEGREG_CERT"
-}
-
-# Function to check for rewards
-check_rewards() {
-  REWARDS=$($CARDANO_CLI conway query stake-address-info --address "$STAKE_ADDR" $NETWORK | jq -r '.[0].rewardAccountBalance')
-  if [[ "$REWARDS" == "null" || "$REWARDS" -eq 0 ]]; then
-    echo "No rewards available to withdraw."
-    return 1
-  else
-    echo "Rewards available: $REWARDS"
-    return 0
+  # check for s or ESC
+  if IFS= read -rsn1 -t 1 key; then
+    case "$key" in
+      s) stop_node; exit 0 ;;
+      $'\e') echo -e "\nReturning to menu…"; exit 0 ;;
+    esac
   fi
-}
+done
 
-submit_transaction() {
-  local TX_RAW="tx.raw"
-  local TX_SIGNED="tx.signed"
-  local STAKE_CERT="stake-registration.cert"
-  local DELEGATION_CERT="delegation.cert"
-  local INCLUDE_STAKE_CERT=$1 # Optional argument to include stake registration certificate
-  local INCLUDE_UNDELEGATION_CERT=$2 # Optional argument to include undelegation certificate
-
-  echo "Building transaction..."
-  $CARDANO_CLI conway transaction build \
-    --tx-in "$SELECTED_UTXO" \
-    --change-address "$(cat $PAYMENT_ADDR_FILE)" \
-    --certificate-file $DELEGATION_CERT \
-    --witness-override 2 \
-    --out-file $TX_RAW \
-    $NETWORK
-
-  # Include stake registration certificate if needed
-  if [[ "$INCLUDE_STAKE_CERT" == "true" ]]; then
-    $CARDANO_CLI conway transaction build \
-      --tx-in "$SELECTED_UTXO" \
-      --change-address "$(cat $PAYMENT_ADDR_FILE)" \
-      --certificate-file $STAKE_CERT \
-      --certificate-file $DELEGATION_CERT \
-      --witness-override 2 \
-      --out-file $TX_RAW \
-      $NETWORK
-  fi
-
-  # Include undelegation certificate if needed
-  if [[ "$INCLUDE_UNDELEGATION_CERT" == "true" ]]; then
-    $CARDANO_CLI conway transaction build \
-      --tx-in "$SELECTED_UTXO" \
-      --change-address "$(cat $PAYMENT_ADDR_FILE)" \
-      --certificate-file $UNDELEGATION_CERT \
-      --witness-override 2 \
-      --out-file $TX_RAW \
-      $NETWORK
-  fi
-
-  echo "Signing transaction..."
-<<<<<<< HEAD
-  $CARDANO_CLI conway transaction sign \
-    --tx-body-file $TX_RAW \
-    --signing-key-file $PAYMENT_SKEY \
-    --signing-key-file $STAKE_SKEY \
-    --out-file $TX_SIGNED
-
-  echo "Submitting transaction..."
-  $CARDANO_CLI conway transaction submit \
-    --tx-file $TX_SIGNED \
-    $NETWORK
-=======
-  sign_tx --tx-body-file "$TX_RAW" \
-          --signing-key-file "$PAYMENT_SKEY" \
-          --signing-key-file "$STAKE_SKEY" \
-          --out-file "$TX_SIGNED"
-
-  echo "Submitting transaction..."
-  submit_tx --tx-file "$TX_SIGNED"
->>>>>>> feature/config-centralization
-}
-
-# Function to submit transaction for undelegation
-submit_undelegation_transaction() {
-  local TX_RAW="tx.raw"
-  local TX_SIGNED="tx.signed"
-
-  echo "Building transaction for undelegation..."
-
-  if check_rewards; then
-    # Case with rewards to withdraw
-    $CARDANO_CLI conway transaction build \
-      --tx-in "$SELECTED_UTXO" \
-      --change-address "$PAYMENT_ADDR" \
-      --withdrawal "$STAKE_ADDR+$REWARDS" \
-      --certificate-file "$DEGREG_CERT" \
-      --witness-override 2 \
-      --out-file "$TX_RAW" \
-      $NETWORK
-  else
-    # Case without rewards
-    $CARDANO_CLI conway transaction build \
-      --tx-in "$SELECTED_UTXO" \
-      --change-address "$PAYMENT_ADDR" \
-      --certificate-file "$DEGREG_CERT" \
-      --witness-override 2 \
-      --out-file "$TX_RAW" \
-      $NETWORK
-  fi
-
-  echo "Signing transaction..."
-<<<<<<< HEAD
-  $CARDANO_CLI conway transaction sign \
-    --tx-body-file "$TX_RAW" \
-    --signing-key-file "$PAYMENT_SKEY" \
-    --signing-key-file "$STAKE_SKEY" \
-    --out-file "$TX_SIGNED"
-
-  echo "Submitting transaction..."
-  $CARDANO_CLI conway transaction submit \
-    --tx-file "$TX_SIGNED" \
-    $NETWORK
-=======
-  sign_tx --tx-body-file "$TX_RAW" \
-          --signing-key-file "$PAYMENT_SKEY" \
-          --signing-key-file "$STAKE_SKEY" \
-          --out-file "$TX_SIGNED"
-
-  echo "Submitting transaction..."
-  submit_tx --tx-file "$TX_SIGNED"
->>>>>>> feature/config-centralization
-}
-
-# Function to check if the user is already delegated
-is_delegated() {
-  if [[ "$STAKE_KEY_REGISTERED" != "null" ]]; then
-    return 0  # Already delegated
-  else
-    return 1  # Not delegated yet
-  fi
-}
-
-
-# Function to withdraw rewards
-withdraw_rewards() {
-  echo "Withdrawing rewards..."
-<<<<<<< HEAD
-  $CARDANO_CLI conway transaction build \
-    --tx-in "$SELECTED_UTXO" \
-    --change-address "$PAYMENT_ADDR" \
-    --withdrawal "$STAKE_ADDR" \
-    --witness-override 2 \
-    --out-file "withdrawal.raw" \
-    $NETWORK
-
-  $CARDANO_CLI conway transaction sign \
-    --tx-body-file "withdrawal.raw" \
-    --signing-key-file $PAYMENT_SKEY \
-    --out-file "withdrawal.signed"
-
-  $CARDANO_CLI conway transaction submit \
-    --tx-file "withdrawal.signed" \
-    $NETWORK
-=======
-  build_tx --tx-in "$SELECTED_UTXO" \
-           --change-address "$PAYMENT_ADDR" \
-           --withdrawal "${STAKE_ADDR}+${REWARDS}" \
-           --witness-override 2 \
-           --out-file "withdrawal.raw"
-
-  sign_tx --tx-body-file "withdrawal.raw" \
-          --signing-key-file "$PAYMENT_SKEY" \
-          --out-file "withdrawal.signed"
-
-  submit_tx --tx-file "withdrawal.signed"
->>>>>>> feature/config-centralization
-
-  echo "Successfully withdrew rewards."
-}
-# Main menu
+# ─── Post-sync prompt ──────────────────────────────────────────────────────────
 while true; do
-  if is_delegated; then
-    # If already delegated, show options to change delegation, undelegate, or exit
-    echo "======================="
-    echo "You Have Delegated to : $STAKE_KEY_REGISTERED"
-    echo "1. Change delegation pool"
-    echo "2. Undelegate & Withdraw all rewards"
-    echo "3. Withdraw rewards to wallet"
-    echo "4. Exit"
-    echo "======================="
-    read -rp "Enter your choice: " CHOICE
-
-    case $CHOICE in
-      1)
-        # Change delegation pool
-        if ! select_valid_poolid; then continue; fi
-        if ! select_valid_utxo; then continue; fi
-        create_stake_certificates "$POOL_ID"
-        submit_transaction false # Do not include stake registration certificate
-        echo "Successfully changed delegation to pool $POOL_ID"
-        ;;
-      2)
-        # Undelegate
-        echo "Undelegating..."
-        if ! select_valid_utxo; then continue; fi
-        create_undelegation_certificate
-        submit_undelegation_transaction
-        echo "Successfully undelegated from pool $STAKE_KEY_REGISTERED"
-        ;;
-
-      3)
-        # Withdraw rewards
-        if check_rewards; then
-          withdraw_rewards
-        fi
-        ;;
-      4)
-        echo "Exiting the program."
-        exit 0
-        ;;
-      *)
-        echo "Invalid choice. Please try again."
-        ;;
-    esac
-  else
-    # If not delegated yet, show options to delegate or exit
-    echo "======================="
-    echo "You Have Not Yet Delegate!"
-    echo "1. Delegate to a new pool"
-    echo "2. Exit"
-    echo "======================="
-    read -rp "Enter your choice: " CHOICE
-
-    case $CHOICE in
-      1)
-        # Delegate to a new pool
-        if ! select_valid_poolid; then continue; fi
-        if ! select_valid_utxo; then continue; fi
-        create_stake_certificates "$POOL_ID"
-        submit_transaction true # Include stake registration certificate
-        echo "Successfully delegated to pool $POOL_ID!"
-        ;;
-      2)
-        echo "Exiting the program."
-        exit 0
-        ;;
-      *)
-        echo "Invalid choice. Please try again."
-        ;;
-    esac
-  fi
+  read -rp "Press 's' to stop node or ESC to return: " -n1 key
+  case "$key" in
+    s) stop_node; exit 0 ;;
+    $'\e') echo ""; echo "Returning to menu…"; exit 0 ;;
+  esac
 done

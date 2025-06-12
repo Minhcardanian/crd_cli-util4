@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ─── Cleanup on Ctrl+C / SIGTERM ───────────────────────────────────────────────
+trap 'echo; echo "Interrupted — stopping node…"; stop_node; exit 1' INT TERM
+
 # ─── Setup & Config Loading ────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config.sh"
@@ -8,7 +11,7 @@ LIB_FILE="$SCRIPT_DIR/lib.sh"
 WRAPPER="${PREVIEW_NODE_SCRIPT:-"$HOME/preview-node.sh"}"
 LOG_FILE="$SCRIPT_DIR/node.log"
 
-# sanity checks
+# ─── Sanity checks ─────────────────────────────────────────────────────────────
 [[ -f "$CONFIG_FILE" && -f "$LIB_FILE" ]] || {
   echo "Error: config.sh or lib.sh missing in $SCRIPT_DIR" >&2
   exit 1
@@ -40,8 +43,12 @@ get_tip() {
 }
 
 kill_node_processes() {
+  # kill wrapper
   [[ -n "${PREVIEW_PID-}" ]] && kill "$PREVIEW_PID" 2>/dev/null || :
+  # kill cardano-node child processes
   pkill -P "$PREVIEW_PID" 2>/dev/null || :
+  # remove the socket so it can't linger
+  rm -f "$CARDANO_NODE_SOCKET_PATH"
 }
 
 # ─── Control functions ─────────────────────────────────────────────────────────
@@ -61,11 +68,11 @@ stop_node() {
   rm -f "$LOG_FILE"
 }
 
-# ─── Stale-process purge ────────────────────────────────────────────────────────
+# ─── Purge stale instance ──────────────────────────────────────────────────────
 if is_wrapper_running; then
   PREVIEW_PID=$(pgrep -f "$WRAPPER.*run")
-  echo "preview-node.sh already running (PID $PREVIEW_PID)."
-  read -rp "Kill stale preview-node.sh and start fresh? (y/n) " killit
+  echo "Found existing preview-node.sh (PID $PREVIEW_PID)."
+  read -rp "Kill it and start fresh? (y/n) " killit
   if [[ "$killit" =~ ^[Yy]$ ]]; then
     stop_node
     unset PREVIEW_PID
@@ -74,7 +81,7 @@ if is_wrapper_running; then
   fi
 fi
 
-# ─── Interactive flow ──────────────────────────────────────────────────────────
+# ─── Interactive start flow ───────────────────────────────────────────────────
 if ! is_wrapper_running; then
   read -rp "Node is not running. Start it now? (y/n) " choice
   if [[ "$choice" =~ ^[Yy]$ ]]; then
@@ -84,11 +91,10 @@ if ! is_wrapper_running; then
     exit 0
   fi
 else
-  # ensure PREVIEW_PID is set if reused
   PREVIEW_PID=${PREVIEW_PID:-$(pgrep -f "$WRAPPER.*run")}
 fi
 
-# ─── Wait for wrapper to appear ────────────────────────────────────────────────
+# ─── Wait for node to appear ──────────────────────────────────────────────────
 while ! is_wrapper_running; do
   printf "Waiting for preview-node.sh…  \r"
   sleep 1
@@ -96,7 +102,7 @@ done
 
 echo "Node detected. Press 's' to stop or ESC to exit."
 
-# ─── Monitor loop with numeric status ──────────────────────────────────────────
+# ─── Monitor loop with numeric status ─────────────────────────────────────────
 while is_wrapper_running; do
   blk="---"; pct="0.00"
   if tip_info=$(get_tip); then
